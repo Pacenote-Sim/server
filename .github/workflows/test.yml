@@ -129,6 +129,13 @@ jobs:
         with:
           protocol-token: ${{ secrets.PROTOCOL_TOKEN }}
       - uses: anchore/sbom-action/download-syft@v0
+      # install-only, because the point of this job is that `make dist` is the
+      # command — the action is here to put goreleaser on PATH, not to run it.
+      - uses: goreleaser/goreleaser-action@v7
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          install-only: true
 
       # The same command a maintainer runs on a laptop, so a release cannot
       # depend on something only the runner has.
@@ -167,11 +174,18 @@ jobs:
           path: protocol
           token: ${{ secrets.PROTOCOL_TOKEN || github.token }}
           persist-credentials: false
+      - uses: actions/checkout@v7
+        with:
+          repository: ${{ github.repository_owner }}/plugin
+          path: plugin
+          token: ${{ secrets.PROTOCOL_TOKEN || github.token }}
+          persist-credentials: false
 
       - uses: docker/setup-buildx-action@v3
 
       # Built, not pushed. The context is the workspace directory because the
-      # image compiles from source and this module imports github.com/pacenote-sim/protocol.
+      # image compiles from source and this module imports both
+      # github.com/pacenote-sim/protocol and github.com/pacenote-sim/plugin.
       - name: Build the image
         uses: docker/build-push-action@v6
         with:

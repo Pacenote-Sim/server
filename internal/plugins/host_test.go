@@ -223,8 +223,14 @@ func TestHostRefusesToStart(t *testing.T) {
 			eventually(t, "the good plugin to start", func() bool {
 				return stateOf(h.host, "testplugin") == plugins.StateRunning
 			})
-			eventually(t, "the broken plugin to be recorded", func() bool {
-				return h.store.record(tc.plugin).State != ""
+			// Wait for the state it ends in, not for any state at all. A
+			// plugin is recorded as starting before it is recorded as failed,
+			// so a condition of "something was written" returns on the first
+			// of those and the assertion below then reads the wrong one. It
+			// takes a slow machine to lose that race, which is why CI found it
+			// and a laptop did not.
+			eventually(t, "the broken plugin to be recorded as failed", func() bool {
+				return h.store.record(tc.plugin).State == string(plugins.StateFailed)
 			})
 
 			stored := h.store.record(tc.plugin)
