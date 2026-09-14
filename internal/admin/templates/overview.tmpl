@@ -1,0 +1,33 @@
+{{define "content"}}<div class="card">
+    <h1>Overview</h1>
+    <p class="muted">What this server is and how it is doing. Who is driving is on the drivers page, what is paired on devices, and what it all costs on data.</p>
+    <table class="facts">
+      <tr><th>Organisation</th><td>{{.Form.Organisation}}</td></tr>
+      <tr><th>Public address</th><td class="num">{{.Form.BaseURL}}</td></tr>
+      <tr><th>Reached by</th><td>{{.Form.TLSDescription}}</td></tr>
+      <tr><th>Version</th><td class="num">{{.Form.Version}}</td></tr>
+      <tr><th>Uptime</th><td>{{since .Form.Uptime}}</td></tr>
+      <tr><th>Started</th><td class="num">{{datetime .Form.StartedAt}}</td></tr>
+    </table>
+  </div>
+  <div class="card">
+    <h2>Database</h2>
+    <table class="facts">
+      <tr><th>Size</th><td class="num">{{bytes .Form.Stats.DatabaseBytes}}</td></tr>
+      <tr><th>Traces</th><td class="num">{{bytes .Form.Stats.TraceBytes}}<span class="faint"> — the bulk of it, once drivers start uploading</span></td></tr>
+      <tr><th>Drivers</th><td class="num">{{count .Form.Stats.Drivers}}</td></tr>
+      <tr><th>Paired devices</th><td class="num">{{count .Form.Stats.Devices}}</td></tr>
+      <tr><th>Stints</th><td class="num">{{count .Form.Stats.Stints}}</td></tr>
+      <tr><th>Laps</th><td class="num">{{count .Form.Stats.Laps}}</td></tr>
+    </table>
+  </div>
+  <div class="card">
+    <h2>Schema</h2>
+    <table class="facts">
+      <tr><th>State</th><td>{{if .Form.Migrations.UpToDate}}up to date{{else}}<span class="pill bad">{{count .Form.MigrationsPending}} pending</span>{{end}}</td></tr>
+      <tr><th>Migration</th><td class="num">{{.Form.Migrations.Version}} of {{.Form.Migrations.Target}}</td></tr>
+      <tr><th>Applied</th><td class="num">{{count .Form.MigrationsApplied}}</td></tr>
+      <tr><th>Last applied</th><td class="num">{{datetime .Form.Migrations.LastAppliedAt}}</td></tr>
+      <tr><th>Setup completed</th><td class="num">{{datetime .Form.SetupCompletedAt}}<span class="faint"> by {{.Form.SetupCompletedBy}}</span></td></tr>
+    </table>
+  </div>{{end}}

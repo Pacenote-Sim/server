@@ -1,0 +1,45 @@
+{{define "content"}}<div class="card">
+    <h1>Plugins</h1>
+    <p class="muted">Everything this server runs beside the core: coaching, voice, the places results get posted. A plugin is a separate program — if one stops, nothing else does.</p>
+{{if .Form.Unavailable}}    <p class="muted">This server is not running plugins.</p>
+{{else}}    <form method="post" action="/admin/plugins/rescan" class="row tight">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <button class="btn" type="submit">Look for new plugins</button>
+      <span class="faint">Reads the plugin directory again. Nothing that is already running is restarted.</span>
+    </form>
+{{end}}  </div>
+
+{{if not .Form.Unavailable}}  <div class="card">
+{{if .Form.Rows}}    <table class="facts rows">
+      <tr><th>Plugin</th><th>State</th><th>Does</th><th></th></tr>
+{{range .Form.Rows}}      <tr>
+        <td>
+          <a href="{{.Href}}">{{.Name}}</a>
+          <div class="faint">{{.Description}}</div>
+          <div class="faint">{{.Version}} · {{.Author}}</div>
+        </td>
+        <td>
+          <span class="pill {{.Tone}}">{{.State}}</span>
+{{if not .Enabled}}          <div class="faint">turned off</div>
+{{end}}{{if not .Installed}}          <div class="faint">its files are gone</div>
+{{end}}{{if .WrongVersion}}          <div class="faint">built for interface {{.BuiltFor}}, this server speaks {{.HostSpeaks}}</div>
+{{end}}{{if .Restarts}}          <div class="faint">restarted {{.Restarts}} time{{if ne .Restarts 1}}s{{end}}</div>
+{{end}}{{if .LastError}}          <div class="faint">{{.LastError}}</div>
+{{end}}        </td>
+        <td>
+{{range .Declares}}          <div class="faint">{{.}}</div>
+{{end}}        </td>
+        <td>
+          <form method="post" action="/admin/plugins/{{.Name}}/action" class="row">
+            <input type="hidden" name="csrf" value="{{$.CSRF}}">
+{{if .Enabled}}            <button class="ghost" type="submit" name="action" value="disable">Turn off</button>
+{{else}}            <button class="ghost" type="submit" name="action" value="enable">Turn on</button>
+{{end}}          </form>
+        </td>
+      </tr>
+{{end}}    </table>
+{{else}}    <h2>No plugins yet</h2>
+    <p class="muted">A plugin is a folder holding a manifest and a program. Put one in <code>{{.Form.Dir}}</code> and press <em>Look for new plugins</em> — the folder's name and the name in its manifest have to match.</p>
+    <p class="muted">This server speaks plugin interface {{.Form.HostVersion}}. A plugin built against a different one will say so here rather than starting.</p>
+{{end}}  </div>
+{{end}}{{end}}

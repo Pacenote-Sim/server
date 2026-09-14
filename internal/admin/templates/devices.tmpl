@@ -1,0 +1,67 @@
+{{define "content"}}<div class="card">
+    <h1>Devices</h1>
+    <p class="muted">Every machine that has been paired, newest first. A machine uploads with the token it was given when you approved its pairing — this server kept only that token's fingerprint, so the few characters below are the whole of what there is to show.</p>
+{{if .Form.Total}}    <table class="facts">
+      <tr><th>Signed in</th><td class="num">{{count .Form.Live}}<span class="faint"> able to upload right now</span></td></tr>
+      <tr><th>Ever paired</th><td class="num">{{count .Form.Total}}<span class="faint"> including the ones you have signed out</span></td></tr>
+    </table>
+{{end}}  </div>
+
+{{if .Form.Confirm}}  <div class="card danger">
+    <h2>Sign out every machine of {{.Form.Confirm.DriverName}}</h2>
+{{if .Form.Confirm.Live}}    <p class="muted">This signs out {{count .Form.Confirm.Live}} of {{.Form.Confirm.DriverName}}'s machines — the ones listed here and nothing else. They pair again from their client before their next upload, and anything queued on those machines waits until they do. Nothing already uploaded is touched, and no other driver is affected.</p>
+    <table class="facts rows">
+      <tr><th>Machine</th><th>Token</th><th>Paired</th><th>Last used</th></tr>
+{{range .Form.Confirm.Machines}}      <tr>
+        <td>{{if .Label}}{{.Label}}{{else}}<span class="faint">no label</span>{{end}}</td>
+        <td class="num">{{.TokenPrefix}}…</td>
+        <td>{{template "moment" .Paired}}</td>
+        <td>{{template "moment" .LastUsed}}</td>
+      </tr>
+{{end}}    </table>
+    <form method="post" action="/admin/devices/revoke-all" class="row tight">
+      <input type="hidden" name="csrf" value="{{$.CSRF}}">
+      <input type="hidden" name="driver_id" value="{{.Form.Confirm.DriverID}}">
+      <input type="hidden" name="back" value="devices">
+      <button class="btn warn" type="submit">Sign out {{count .Form.Confirm.Live}} {{if eq .Form.Confirm.Live 1}}machine{{else}}machines{{end}}</button>
+      <a class="ghost" href="{{.Form.Confirm.CancelHref}}">Cancel</a>
+    </form>
+{{else}}    <p class="muted">{{.Form.Confirm.DriverName}} has no machine still signed in, so there is nothing to sign out.</p>
+    <div class="actions"><a class="ghost" href="{{.Form.Confirm.CancelHref}}">Back to the list</a></div>
+{{end}}  </div>
+{{end}}
+  <div class="card">
+    <h2>Paired machines</h2>
+{{if .Form.Rows}}    <table class="facts rows">
+      <tr><th>Driver</th><th>Machine</th><th>Token</th><th>Paired</th><th>Last used</th><th>Sign out</th></tr>
+{{range .Form.Rows}}      <tr>
+        <td><a href="{{.DriverHref}}">{{.DriverName}}</a></td>
+        <td>{{if .Label}}{{.Label}}{{else}}<span class="faint">no label</span>{{end}}</td>
+        <td class="num">{{.TokenPrefix}}…</td>
+        <td>{{template "moment" .Paired}}</td>
+        <td>{{if .IsRevoked}}<span class="pill bad">signed out</span> {{template "moment" .Revoked}}{{else}}{{template "moment" .LastUsed}}{{end}}</td>
+        <td>
+{{if .IsRevoked}}          <span class="faint">already out</span>
+{{else}}          <form method="post" action="/admin/devices/revoke" class="row">
+            <input type="hidden" name="csrf" value="{{$.CSRF}}">
+            <input type="hidden" name="device_id" value="{{.ID}}">
+            <input type="hidden" name="back" value="{{$.Form.Back}}">
+            <button class="ghost" type="submit">Sign out</button>
+          </form>
+{{end}}        </td>
+      </tr>
+{{end}}    </table>
+    <p class="faint">Revoking signs this machine out — the driver pairs again to keep uploading. It takes effect on that machine's next request rather than at its next restart, so their client starts being refused within seconds, and nothing they have already uploaded is removed.</p>
+{{template "pager" .Form.Links}}
+{{else}}    <p class="muted">No machine has been paired yet. A driver starts pairing in their client, you approve the code on the pairing page, and the machine appears here under the driver you approved it for.</p>
+{{end}}  </div>
+
+  <div class="card">
+    <h2>Signing a driver out entirely</h2>
+    <p class="muted">For a laptop that has gone missing. Open the driver from the list above and use the button on their page, or go straight to the confirmation from here — either way you see the machines named before anything happens.</p>
+    <label class="field off">
+      <span class="lbl">Automatic expiry</span>
+      <input type="text" value="Not in this build" disabled>
+      <span class="hint">{{enterprise}} It signs out a machine that has not connected for ninety days, so a laptop nobody remembers stops being a way in without you noticing it.</span>
+    </label>
+  </div>{{end}}

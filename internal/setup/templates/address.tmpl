@@ -1,0 +1,33 @@
+{{define "content"}}<div class="card">
+    <h1>Public address</h1>
+    <p class="muted">The host name drivers' clients reach. Pairing links are built from it, and it is the name on the certificate if you let this server get one.</p>
+    <form method="post" action="/setup/address">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <label class="field">
+        <span class="lbl">Host name</span>
+        <input class="mono" type="text" name="host" autofocus spellcheck="false" value="{{.Form.Host}}">
+        <span class="hint">pacenote.example.com — no scheme, no port. An IP address will not do: it cannot get a certificate, and it pins every client you build to one machine.</span>
+      </label>
+      <fieldset>
+        <legend>How it is reached</legend>
+        <label class="choice">
+          <input type="radio" name="tls_mode" value="proxy"{{if .Form.Proxy}} checked{{end}}>
+          <span>
+            <span class="t">Behind my own proxy</span>
+            <span class="d">This server speaks plain HTTP on its port, and something in front of it — nginx, Caddy, a load balancer — holds the certificate.</span>
+          </span>
+        </label>
+        <label class="choice">
+          <input type="radio" name="tls_mode" value="auto"{{if .Form.Auto}} checked{{end}}>
+          <span>
+            <span class="t">Obtain a certificate for me</span>
+            <span class="d">This server gets a Let's Encrypt certificate for the host above and serves HTTPS itself. It needs ports 80 and 443, and that host name has to already point at this machine.</span>
+          </span>
+        </label>
+      </fieldset>
+      <div class="actions">
+        <button class="btn" type="submit">Continue</button>
+        <a class="ghost" href="/setup/account">Back</a>
+      </div>
+    </form>
+  </div>{{end}}

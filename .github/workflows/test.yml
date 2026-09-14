@@ -1,0 +1,197 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    # Every job checks this repository out into server/ so that github.com/pacenote-sim/protocol
+    # can sit beside it. See .github/actions/go-workspace.
+    working-directory: server
+
+jobs:
+  test:
+    name: go test (${{ matrix.go }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        go: ["1.26", "stable"]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: server
+          persist-credentials: false
+      - uses: ./server/.github/actions/go-workspace
+        with:
+          go-version: ${{ matrix.go }}
+          protocol-token: ${{ secrets.PROTOCOL_TOKEN }}
+
+      - name: Build
+        run: go build ./...
+      # Every platform the release ships, compiled on every change, because a
+      # cross-build that only runs at a tag breaks at a tag.
+      - name: Build every released platform
+        run: make build-cross
+
+      - name: Test
+        run: go test -race -shuffle=on -count=1 -covermode=atomic -coverprofile=coverage.out ./...
+
+      - name: Upload coverage
+        if: matrix.go == '1.26'
+        uses: codecov/codecov-action@v7
+        with:
+          files: server/coverage.out
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+  test-postgres:
+    name: go test -tags postgres
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        # The major the compose file in the release package pins, so what CI
+        # tests and what an operator runs are the same PostgreSQL.
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: pacenote
+          POSTGRES_PASSWORD: pacenote
+          POSTGRES_DB: pacenote
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U pacenote -d pacenote"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: server
+          persist-credentials: false
+      - uses: ./server/.github/actions/go-workspace
+        with:
+          protocol-token: ${{ secrets.PROTOCOL_TOKEN }}
+
+      # Each of these tests creates its own empty database and drops it
+      # afterwards, so they need a server they may create databases on rather
+      # than a database.
+      - name: Test against PostgreSQL
+        env:
+          PACENOTE_TEST_DATABASE_URL: postgres://pacenote:pacenote@127.0.0.1:5432/pacenote?sslmode=disable
+        run: go test -tags postgres -race -shuffle=on -count=1 ./...
+
+      # The floors are here rather than in their own job because coverage needs
+      # the same database the tests do, and a gate that only runs on a laptop is
+      # not a gate.
+      - name: Coverage floors
+        env:
+          PACENOTE_TEST_DATABASE_URL: postgres://pacenote:pacenote@127.0.0.1:5432/pacenote?sslmode=disable
+        run: make cover
+
+  package:
+    name: package (dist)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: pacenote
+          POSTGRES_PASSWORD: pacenote
+          POSTGRES_DB: pacenote
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U pacenote -d pacenote"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: server
+          persist-credentials: false
+          # GoReleaser reads the tag history to work out a snapshot version.
+          fetch-depth: 0
+      - uses: ./server/.github/actions/go-workspace
+        with:
+          protocol-token: ${{ secrets.PROTOCOL_TOKEN }}
+      - uses: anchore/sbom-action/download-syft@v0
+
+      # The same command a maintainer runs on a laptop, so a release cannot
+      # depend on something only the runner has.
+      - name: make dist
+        run: make dist
+
+      # Unzips what an operator downloads, runs it, and checks it reaches the
+      # setup wizard — with no database, and against a real one.
+      - name: Test the package
+        env:
+          PACENOTE_TEST_DATABASE_URL: postgres://pacenote:pacenote@127.0.0.1:5432/pacenote?sslmode=disable
+        run: go test -tags 'dist postgres' -count=1 ./internal/packaging/...
+
+      - name: Upload the package
+        uses: actions/upload-artifact@v7
+        with:
+          name: pacenote-ce-snapshot
+          path: |
+            server/dist/*.zip
+            server/dist/checksums.txt
+          if-no-files-found: error
+          retention-days: 7
+
+  image:
+    name: docker build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: server
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        with:
+          repository: ${{ github.repository_owner }}/protocol
+          path: protocol
+          token: ${{ secrets.PROTOCOL_TOKEN || github.token }}
+          persist-credentials: false
+
+      - uses: docker/setup-buildx-action@v3
+
+      # Built, not pushed. The context is the workspace directory because the
+      # image compiles from source and this module imports github.com/pacenote-sim/protocol.
+      - name: Build the image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: server/Dockerfile
+          push: false
+          load: true
+          tags: pacenote-server:ci
+          build-args: |
+            VERSION=0.0.0-ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: The image runs, and runs as nobody in particular
+        run: |
+          docker run --rm pacenote-server:ci -version
+          test "$(docker inspect --format '{{.Config.User}}' pacenote-server:ci)" = "65532:65532"
+
+      # A compose file that does not parse is a first run that does not happen.
+      - name: The compose file is valid
+        run: |
+          POSTGRES_PASSWORD=checking-only docker compose \
+            --file packaging/docker-compose.yml config --quiet

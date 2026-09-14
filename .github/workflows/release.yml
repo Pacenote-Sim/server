@@ -1,0 +1,172 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+# Read by default. The one job that needs to write is the one that creates the
+# release, and the one that needs to push a package says so itself.
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: server
+
+env:
+  # The image an operator's compose file pulls. It is named for the program
+  # rather than for the repository, because that is what the file says.
+  IMAGE: ghcr.io/${{ github.repository_owner }}/pacenote-server
+
+jobs:
+  # A tag with nothing written down about it is a tag nobody can upgrade to
+  # safely, so this runs first and fails the release rather than publishing
+  # empty notes.
+  notes:
+    name: release notes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: server
+          persist-credentials: false
+
+      - name: Take the notes from CHANGELOG.md
+        run: ./scripts/release-notes.sh "${GITHUB_REF_NAME}" > "${GITHUB_WORKSPACE}/notes.md"
+
+      - name: Show what will be published
+        run: cat "${GITHUB_WORKSPACE}/notes.md"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-notes
+          path: notes.md
+          if-no-files-found: error
+
+  release:
+    name: archives, checksums and the GitHub release
+    needs: notes
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      # The only job that writes anything to the repository, and the only
+      # reason it does is to create the release.
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: server
+          persist-credentials: false
+          # GoReleaser needs the tag history and the commit timestamp it stamps
+          # builds with.
+          fetch-depth: 0
+      - uses: ./server/.github/actions/go-workspace
+        with:
+          protocol-repository: ${{ vars.PROTOCOL_REPOSITORY }}
+          protocol-ref: ${{ vars.PROTOCOL_REF || 'main' }}
+          plugin-repository: ${{ vars.PLUGIN_REPOSITORY }}
+          plugin-ref: ${{ vars.PLUGIN_REF || 'main' }}
+          protocol-token: ${{ secrets.PROTOCOL_TOKEN }}
+
+      - uses: anchore/sbom-action/download-syft@v0
+
+      - uses: actions/download-artifact@v7
+        with:
+          name: release-notes
+          path: ${{ github.workspace }}
+
+      - uses: goreleaser/goreleaser-action@v7
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          workdir: server
+          args: release --clean --release-notes=${{ github.workspace }}/notes.md
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # The release assets are the deliverable; this is a copy that survives if
+      # someone deletes the release by mistake.
+      - uses: actions/upload-artifact@v7
+        with:
+          name: pacenote-ce-${{ github.ref_name }}
+          path: |
+            server/dist/*.zip
+            server/dist/checksums.txt
+          if-no-files-found: error
+
+  image:
+    name: container image
+    needs: notes
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      # Pushing to the GitHub registry, and nothing else.
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: server
+          persist-credentials: false
+      # The image compiles from source, and this module imports both
+      # github.com/pacenote-sim/protocol and github.com/pacenote-sim/plugin, so
+      # the build context is the workspace directory holding all three. Leaving
+      # either out fails the build rather than producing a smaller image.
+      - uses: actions/checkout@v7
+        with:
+          repository: ${{ vars.PROTOCOL_REPOSITORY || format('{0}/protocol', github.repository_owner) }}
+          ref: ${{ vars.PROTOCOL_REF || 'main' }}
+          path: protocol
+          token: ${{ secrets.PROTOCOL_TOKEN || github.token }}
+          persist-credentials: false
+
+      - uses: actions/checkout@v7
+        with:
+          repository: ${{ vars.PLUGIN_REPOSITORY || format('{0}/plugin', github.repository_owner) }}
+          ref: ${{ vars.PLUGIN_REF || 'main' }}
+          path: plugin
+          token: ${{ secrets.PROTOCOL_TOKEN || github.token }}
+          persist-credentials: false
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          # Both spellings of the version, because the README tells an operator
+          # to pin the tag they can see on the release page, and that one has a
+          # v on it.
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern=v{{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: server/Dockerfile
+          # linux/amd64 and linux/arm64, which are the two the archives ship.
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ github.ref_name }}
+          provenance: mode=max
+          sbom: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

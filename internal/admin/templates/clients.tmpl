@@ -1,0 +1,131 @@
+{{define "content"}}<div class="card">
+    <h1>Build client</h1>
+    <p class="muted">Your drivers install one file, and it already knows this server's address — there is nothing for them to type and nothing for them to get wrong. You build it here and put it wherever your league downloads things from.</p>
+  </div>
+
+  <div class="card">
+    <h2>The client you build from</h2>
+{{if .Form.Client.Present}}{{if .Form.Client.Problem}}    <p class="muted">{{.Form.Client.Problem}}</p>
+{{end}}    <table class="facts">
+      <tr><th>File</th><td><span class="path">{{.Form.Client.Path}}</span></td></tr>
+      <tr><th>Version</th><td>{{if .Form.Client.Describes}}{{if .Form.Client.Version}}{{.Form.Client.Version}}{{end}}{{if .Form.Client.Revision}}<span class="faint"> — commit {{.Form.Client.ShortRevision}}{{if .Form.Built.Known}}, {{datetime .Form.Client.BuiltAt}}{{end}}</span>{{end}}{{else}}<span class="faint">not recorded — this client was built without version information, so the history will say so too</span>{{end}}</td></tr>
+      <tr><th>Copied here</th><td>{{template "moment" .Form.Modified}}</td></tr>
+      <tr><th>Size</th><td class="num">{{bytes .Form.Client.Size}}</td></tr>
+      <tr><th>SHA-256</th><td><span class="path">{{.Form.Client.SHA256}}</span></td></tr>
+{{if .Form.Client.Machine}}      <tr><th>Built for</th><td>{{if .Form.Client.GOOS}}{{.Form.Client.GOOS}}/{{.Form.Client.GOARCH}}{{else}}<span class="faint">a Windows executable</span>{{end}}<span class="faint"> — the header inside it says {{.Form.Client.Machine}}</span></td></tr>
+{{end}}{{if .Form.Client.Stampable}}      <tr><th>Reserved region</th><td><span class="pill on">ready</span><span class="faint"> 1024 bytes inside the binary, waiting for an address</span></td></tr>
+{{end}}{{if .Form.Client.StampedWith}}      <tr><th>Already carries</th><td><span class="path">{{.Form.Client.StampedWith}}</span><span class="faint"> — this copy is not a generic client; every build from it still gets the address you type below</span></td></tr>
+{{end}}    </table>
+{{else}}    <p class="muted">There is no client on this server yet, so there is nothing to build from. Copy <strong>{{.Form.ClientFile}}</strong> from the client release into this path, and load this page again:</p>
+    <p><span class="path">{{if .Form.Client.Path}}{{.Form.Client.Path}}{{else}}nowhere — this server has not been told where to look{{end}}</span></p>
+    <p class="faint">Keeping it somewhere else is fine: set {{.Form.ConfigVariable}} to the file and restart this server. The file is the Windows client itself, the one your drivers run — this server never compiles it, it copies it and writes your address into the copy.</p>
+{{end}}  </div>
+
+  <div class="card">
+    <h2>Build a client</h2>
+    <form method="post" action="/admin/clients/build">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <label class="field">
+        <span class="lbl">Server address</span>
+        <input type="text" name="address" class="mono" value="{{.Form.Address}}" autocomplete="off" spellcheck="false" placeholder="https://pacenote.example.com">
+        <span class="hint">This is what goes inside the binary. Your drivers never see it and never type it, so a mistake here is a mistake in every client you hand out — it is shown back to you after the build for exactly that reason. It has to be https:// unless the server is on the driver's own machine: a client refuses plain HTTP to anywhere else.</span>
+      </label>
+
+      <fieldset>
+        <legend>Signing</legend>
+{{range .Form.Signing}}        <label class="choice{{if not .Available}} off{{end}}">
+          <input type="radio" name="signing" value="{{.Value}}"{{if .Chosen}} checked{{end}}{{if not .Available}} disabled{{end}}>
+          <span>
+            <span class="t">{{.Label}}</span>
+            <span class="d">{{.Description}}</span>
+{{if .Why}}            <span class="d why">{{.Why}}</span>
+{{end}}          </span>
+        </label>
+{{end}}      </fieldset>
+
+      <div class="actions"><button class="btn" type="submit"{{if not .Form.CanBuild}} disabled{{end}}>Build client</button>{{if .Form.CanBuild}}<span class="faint">It copies the client and writes the address into the copy — a moment, and nothing is compiled.</span>{{else}}<span class="faint">Nothing to build from yet. The card above says what to put where.</span>{{end}}</div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Your signing certificate</h2>
+{{if .Form.Certificate.Problem}}    <p class="warn">{{.Form.Certificate.Problem}}</p>
+{{end}}{{if .Form.Certificate.Stored}}    <table class="facts">
+      <tr><th>Signs as</th><td>{{.Form.Certificate.Subject}}<span class="faint"> — this is the name Windows shows your drivers</span></td></tr>
+      <tr><th>Issued by</th><td>{{.Form.Certificate.Issuer}}{{if .Form.Certificate.SelfSigned}}<span class="faint"> — you issued it to yourself</span>{{end}}</td></tr>
+      <tr><th>Key</th><td>{{.Form.Certificate.Algorithm}}</td></tr>
+      <tr><th>Expires</th><td>{{template "when" .Form.Certificate.Expires}}</td></tr>
+      <tr><th>SHA-256</th><td><span class="path">{{.Form.Certificate.Thumbprint}}</span></td></tr>
+      <tr><th>Uploaded</th><td>{{template "moment" .Form.Certificate.Uploaded}}<span class="faint"> by {{.Form.Certificate.Actor}}</span></td></tr>
+    </table>
+{{if .Form.Certificate.Expired}}    <p class="warn">This certificate has expired, so it cannot sign anything. Upload a current one, or build unsigned.</p>
+{{else if .Form.Certificate.Expiring}}    <p class="warn">This certificate expires soon. Signatures made with it stop being trusted when it does — this server does not timestamp them — so replace it before then and rebuild the clients you are still handing out.</p>
+{{end}}{{if not .Form.Certificate.CodeSigning}}    <p class="warn">This certificate is not marked for signing software. A signature made with it is one Windows refuses, so your drivers see the untrusted-app warning exactly as they would with an unsigned build.</p>
+{{end}}    <form method="post" action="{{.Form.CertificateRemovePath}}">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <div class="actions"><button class="btn warn" type="submit">Remove this certificate</button><span class="faint">Clients built after this are unsigned. Clients already built keep the signature they were given.</span></div>
+    </form>
+{{else}}    <p class="muted">This server holds no certificate, so every client it builds is unsigned. Give it one and it signs each client it builds, in the same press of the button.</p>
+{{end}}
+    <form method="post" action="{{.Form.CertificatePath}}" enctype="multipart/form-data">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <label class="field">
+        <span class="lbl">{{if .Form.Certificate.Stored}}Replace it with{{else}}Certificate file{{end}}</span>
+        <input type="file" name="certificate" accept=".pfx,.p12">
+        <span class="hint">A PKCS#12 file — <span class="path">.pfx</span> or <span class="path">.p12</span> — holding the certificate and its private key. It is what a certificate authority hands you and what Windows exports. The key is encrypted with this server's data key before it is stored, so a copy of the database does not carry a usable key.</span>
+      </label>
+      <label class="field">
+        <span class="lbl">Password</span>
+        <input type="password" name="password" autocomplete="new-password">
+        <span class="hint">The password that opens the file. It is never shown again.</span>
+      </label>
+      <div class="actions"><button class="btn" type="submit">{{if .Form.Certificate.Stored}}Replace certificate{{else}}Store certificate{{end}}</button></div>
+    </form>
+
+    <p class="faint">What this does and does not do. A signature says who built the file and that nobody changed it since — that much is true of any certificate. Whether it stops the Windows warning is a different question and depends on who vouched for you: a certificate from a public authority stops it once the file has built a download reputation, and one you issued yourself stops it only on machines that already trust your authority. Signing with your own certificate is still worth doing inside a league, because a driver can check the signature is yours.</p>
+    <p class="faint">Signatures made here are not timestamped. That means they are trusted only while the certificate is, rather than for as long as the file exists — so a client built today stops verifying on the day the certificate expires, even though nothing about the file changed.</p>
+  </div>
+
+{{if .Form.Latest}}  <div class="card">
+    <h2>{{if .Form.Fresh}}The client you just built{{else}}The last client you built{{end}}</h2>
+    <table class="facts">
+      <tr><th>Address inside it</th><td><span class="path">{{.Form.Latest.Address}}</span><span class="faint"> — this is where every driver who installs this file will send their laps</span></td></tr>
+      <tr><th>File</th><td>{{.Form.Latest.Name}}<span class="faint"> — {{bytes .Form.Latest.Bytes}}</span></td></tr>
+      <tr><th>SHA-256</th><td><span class="path">{{.Form.Latest.SHA256}}</span></td></tr>
+      <tr><th>Signing</th><td>{{.Form.Latest.Signing}}{{if .Form.Latest.SignedBy}}<span class="faint"> — signed as {{.Form.Latest.SignedBy}}</span>{{else}}<span class="faint"> — Windows will warn your drivers the app is untrusted, and they choose to run it anyway</span>{{end}}</td></tr>
+      <tr><th>Built</th><td>{{template "moment" .Form.Latest.At}}<span class="faint"> by {{.Form.Latest.Actor}}</span></td></tr>
+      <tr><th>From</th><td>{{.Form.Latest.Version}}</td></tr>
+    </table>
+{{if .Form.Latest.Gone}}    <p class="muted">The file itself is no longer on this server, so there is nothing to download. Build it again — the address it carried is the one above.</p>
+{{else}}    <div class="actions"><a class="btn" href="{{.Form.Latest.Href}}">Download {{.Form.Latest.Name}}</a><span class="faint">Hand your drivers this file and the digest above.</span></div>
+    <p class="faint">A driver can check the digest before they run it: <span class="path">certutil -hashfile {{.Form.Latest.Name}} SHA256</span> in a Windows command prompt prints the same string.</p>
+{{end}}  </div>
+{{end}}
+  <div class="card">
+    <h2>Builds</h2>
+{{if .Form.Rows}}    <p class="muted">Every client built here, newest first — {{count .Form.Total}} so far. An old build keeps working: it talks to the address it was built with, whatever you have built since.</p>
+    <table class="facts rows">
+      <tr><th>Built</th><th>By</th><th>Address</th><th>From</th><th>Signing</th><th>File</th></tr>
+{{range .Form.Rows}}      <tr>
+        <td>{{template "moment" .At}}</td>
+        <td>{{.Actor}}</td>
+        <td><span class="path">{{.Address}}</span></td>
+        <td>{{.Version}}</td>
+        <td>{{.Signing}}{{if .SignedBy}}<span class="faint"> — {{.SignedBy}}</span>{{end}}</td>
+        <td>{{if .Gone}}<span class="faint">not on this server any more</span>{{else}}<a href="{{.Href}}">{{.Name}}</a><span class="faint"> — {{bytes .Bytes}}</span>{{end}}</td>
+      </tr>
+{{end}}    </table>
+{{template "pager" .Form.Links}}
+{{else}}    <p class="muted">Nothing has been built here yet. What you build appears in this list with the address it carries, so you can tell one file from another months later.</p>
+{{end}}  </div>
+
+  <div class="card">
+    <h2>What your drivers do with it</h2>
+    <p class="muted">They download the file and run it. Windows shows them a blue dialog — "Windows protected your PC" — with the Run button hidden behind <strong>More info</strong>; they choose <strong>Run anyway</strong>, once, and never see it again on that machine. Say so in the message you send them, because a warning nobody mentioned is a warning that stops them.</p>
+    <p class="faint">The app opens on a six-character pairing code, they approve it on the pairing page of this server while signed in, and they are done. There is no server address to type because this build already carries one.</p>
+    <label class="field off">
+      <span class="lbl">Self-update from this server</span>
+      <input type="text" value="Not in this build" disabled>
+      <span class="hint">A built client would fetch later versions from the server that built it, so an operator decides when their drivers move. It needs signing to mean anything, which is the same question as the one above.</span>
+    </label>
+  </div>{{end}}

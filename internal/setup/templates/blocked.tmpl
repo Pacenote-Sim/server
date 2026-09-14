@@ -1,0 +1,5 @@
+{{define "content"}}<div class="card">
+    <h1>{{.Form.Heading}}</h1>
+    <p class="muted">{{.Form.Body}}</p>
+{{if .Form.AdminURL}}    <div class="actions"><a class="btn" href="{{.Form.AdminURL}}">Go to the admin panel</a></div>
+{{end}}  </div>{{end}}

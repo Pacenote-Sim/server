@@ -1,0 +1,36 @@
+# BuildKit reads this in preference to a .dockerignore at the context root,
+# which is what lets the ignore rules live in this repository while the context
+# is the workspace directory above it.
+
+# Version control history. The build passes its version in with -ldflags
+# because copying a repository's history to learn one string is not a trade
+# worth making.
+**/.git
+**/.github
+
+# Build outputs, which would only invalidate the cache.
+**/dist
+**/bin
+**/pacenote-server
+**/pacenote-server.exe
+**/*.exe
+**/*.test
+**/*.out
+**/*.prof
+
+# A running server's data directory, and anything else local.
+**/pacenote-data
+**/.env
+**/.env.*
+**/node_modules
+**/.idea
+**/.vscode
+**/.DS_Store
+
+# The client repository, if it is checked out in the same workspace. Nothing in
+# this image comes from it.
+telemetry
+
+# The workspace file is written by the build, not copied.
+go.work
+go.work.sum

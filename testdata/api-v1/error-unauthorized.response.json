@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "unauthorized",
+    "message": "This request carried no token — pair this machine with the server and try again."
+  }
+}

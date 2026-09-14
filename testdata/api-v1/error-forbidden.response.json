@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "forbidden",
+    "message": "The field relay is not available on this server — this is the community edition, which records one driver rather than a whole session."
+  }
+}

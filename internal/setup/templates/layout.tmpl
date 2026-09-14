@@ -1,0 +1,26 @@
+{{define "layout"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{.Title}} — Pacenote setup</title>
+<link rel="stylesheet" href="/assets/app.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <span class="name">Pacenote</span>
+    <span class="wm">first run</span>
+    <span class="spacer"></span>
+    <span class="pill">{{.Version}}</span>
+  </header>
+{{if .Steps}}  <div class="steps">
+{{range .Steps}}    <span class="step {{.Class}}">{{.Name}}</span>
+{{end}}  </div>
+{{end}}{{if .Error}}  <div class="notice bad">{{.Error}}</div>
+{{end}}{{if .Notice}}  <div class="notice">{{.Notice}}</div>
+{{end}}  {{template "content" .}}
+  <footer class="foot">Nothing on this page is written down until you finish. The token is not logged.</footer>
+</div>
+</body>
+</html>{{end}}

@@ -1,0 +1,13 @@
+{{define "content"}}<div class="card">
+    <h1>Set up this server</h1>
+    <p class="muted">This server has no administrator yet. The token proves you are the person who started it — without one, whoever loaded this page first would become the administrator.</p>
+    <form method="post" action="/setup">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <label class="field">
+        <span class="lbl">Setup token</span>
+        <input class="mono" type="text" name="token" autocomplete="off" autofocus spellcheck="false" value="">
+        <span class="hint">It was printed once, in the terminal where you started the server. It is not in any log.</span>
+      </label>
+      <div class="actions"><button class="btn" type="submit">Continue</button></div>
+    </form>
+  </div>{{end}}

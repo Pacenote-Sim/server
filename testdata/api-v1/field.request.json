@@ -1,0 +1,34 @@
+{
+  "stint_id": "01a09580-0818-7a2a-aa2a-2a2a2a2a2a2a",
+  "session_type": "race",
+  "flag": "green",
+  "laps_total": 32,
+  "cars": [
+    {
+      "num": "17",
+      "driver": "A. Ruiz",
+      "class": "gt3",
+      "lap": 12,
+      "dist": 0.42,
+      "last_ms": 91020,
+      "best_ms": 90440,
+      "gap_ms": 0,
+      "pit": false,
+      "inc": 4,
+      "is_player": true
+    },
+    {
+      "num": "7",
+      "driver": "M. Costa",
+      "class": "gt3",
+      "lap": 12,
+      "dist": 0.39,
+      "last_ms": 91240,
+      "best_ms": 90118,
+      "gap_ms": 3120,
+      "pit": false,
+      "inc": 2,
+      "is_player": false
+    }
+  ]
+}

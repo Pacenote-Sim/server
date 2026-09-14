@@ -1,0 +1,26 @@
+{{define "content"}}<div class="card">
+    <h1>Pairing</h1>
+    <p class="muted">A driver's client shows a six-character code and waits. Match it against the list below and approve it, and that machine is paired to the driver you choose. Nothing is paired until you say so.</p>
+{{if .Form.Pending}}    <table class="facts rows">
+      <tr><th>Code</th><th>Waiting</th><th>Runs out in</th><th>Decision</th></tr>
+{{range .Form.Pending}}      <tr>
+        <td class="num code">{{.UserCode}}</td>
+        <td>{{since .Waiting}}</td>
+        <td>{{since .ExpireIn}}</td>
+        <td>
+          <form method="post" action="/admin/pairings" class="row">
+            <input type="hidden" name="csrf" value="{{$.CSRF}}">
+            <input type="hidden" name="id" value="{{.ID}}">
+{{if $.Form.Drivers}}            <select name="driver_id">
+              <option value="">a new driver, named here →</option>
+{{range $.Form.Drivers}}              <option value="{{.ID}}">{{.Name}}</option>
+{{end}}            </select>
+{{end}}            <input type="text" name="driver_name" placeholder="Driver name" autocomplete="off">
+            <button class="btn" type="submit" name="decision" value="approve">Approve</button>
+            <button class="ghost" type="submit" name="decision" value="deny">Deny</button>
+          </form>
+        </td>
+      </tr>
+{{end}}    </table>
+{{else}}    <p class="muted">Nothing is waiting. A code appears here within a second or two of a driver starting the pairing in their client, and it runs out ten minutes later.</p>
+{{end}}  </div>{{end}}

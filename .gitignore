@@ -1,0 +1,23 @@
+# build outputs
+/dist/
+/bin/
+/pacenote-server
+/pacenote-server.exe
+*.exe
+*.test
+*.out
+*.prof
+coverage.out
+
+# a running server's data directory, if one is created here during development
+/pacenote-data/
+
+# tooling
+/.idea/
+/.vscode/
+*.swp
+.DS_Store
+
+# local env
+.env
+.env.*

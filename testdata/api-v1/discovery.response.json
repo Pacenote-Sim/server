@@ -1,0 +1,25 @@
+{
+  "api": "/api/v1",
+  "name": "Iberian GT Championship",
+  "short_name": "IGTC",
+  "logo": "https://pacenote.example.com/logo.png",
+  "accent": "#C6F24B",
+  "features": [
+    "telemetry",
+    "reference",
+    "live",
+    "tts",
+    "field"
+  ],
+  "limits": {
+    "trace_points": 300,
+    "laps_per_request": 50,
+    "live_interval_ms": 1000,
+    "field_interval_ms": 2000,
+    "summary_interval_ms": 30000,
+    "max_body_bytes": 2097152
+  },
+  "min_client": "1.0.0",
+  "pair_uri": "https://pacenote.example.com/pair",
+  "privacy_uri": "https://pacenote.example.com/privacy"
+}

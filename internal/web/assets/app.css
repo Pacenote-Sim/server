@@ -1,0 +1,267 @@
+/* Pacenote — server pages. The same monochrome the capture client wears, so an
+   operator who has seen one recognises the other. No framework, no content
+   delivery network: this file is served from the binary. */
+:root {
+  --bg: #0A0A0A;
+  --card: #0F0F0F;
+  --nested: #141414;
+  --border: #1F1F1F;
+  --border-strong: rgba(255, 255, 255, .20);
+  --inputbg: rgba(255, 255, 255, .04);
+  --text: #FFFFFF;
+  --muted: #A0A0A0;
+  --faint: #6A6A6A;
+  --volt: #FFFFFF;
+  --on-volt: #0A0A0A;
+  --bad: #FF6B6B;
+  --good: #7DD87D;
+  --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --chamfer: polygon(12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%, 0 12px);
+  --chamfer-sm: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  line-height: 1.5;
+  font-size: 14px;
+}
+
+.wrap { max-width: 640px; margin: 0 auto; padding: 28px 20px 64px; }
+.wrap.wide { max-width: 900px; }
+
+header.top { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
+header.top .name { font-weight: 700; font-size: 16px; letter-spacing: .2px; }
+header.top .wm {
+  font-family: var(--mono); font-size: 11px; letter-spacing: 2px;
+  text-transform: uppercase; color: var(--muted);
+  border-left: 1px solid var(--border); padding-left: 12px;
+}
+header.top .spacer { flex: 1; }
+
+nav.sections { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 22px; }
+nav.sections a, nav.sections span {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 1.5px;
+  text-transform: uppercase; padding: 6px 10px;
+  clip-path: var(--chamfer-sm); border: 1px solid var(--border);
+  color: var(--muted); text-decoration: none;
+}
+nav.sections a:hover { border-color: var(--border-strong); color: var(--text); }
+nav.sections a.on { background: var(--volt); color: var(--on-volt); border-color: var(--volt); font-weight: 600; }
+nav.sections span.later { color: var(--faint); border-style: dashed; }
+
+.card {
+  background: var(--card); border: 1px solid var(--border);
+  clip-path: var(--chamfer); padding: 20px; margin-bottom: 14px;
+}
+
+h1 { font-size: 20px; margin: 0 0 6px; font-weight: 700; }
+h2 {
+  font-family: var(--mono); font-size: 11px; letter-spacing: 2px;
+  text-transform: uppercase; color: var(--muted); margin: 0 0 14px; font-weight: 600;
+}
+p { margin: 0 0 12px; }
+p:last-child { margin-bottom: 0; }
+.muted { color: var(--muted); }
+.faint { color: var(--faint); font-size: 12px; }
+/* A sentence the operator has to act on, as opposed to one that explains. It
+   is a rule down the left rather than red text: three of these in a row — an
+   expiring certificate that is also the wrong kind — must stay readable. */
+p.warn {
+  color: var(--text); border-left: 2px solid var(--bad);
+  padding-left: 12px; margin-bottom: 12px;
+}
+
+label.field { display: block; margin-bottom: 16px; }
+label.field .lbl {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 1.5px;
+  text-transform: uppercase; color: var(--faint); display: block; margin-bottom: 6px;
+}
+label.field .hint { display: block; color: var(--muted); font-size: 12px; margin-top: 6px; }
+
+input[type=text], input[type=email], input[type=password], textarea, select {
+  width: 100%; background: var(--inputbg); border: 1px solid var(--border-strong);
+  color: var(--text); padding: 10px 12px; font-size: 14px; font-family: inherit;
+  clip-path: var(--chamfer-sm);
+}
+input[type=text].mono, input[type=password].mono { font-family: var(--mono); letter-spacing: 1px; }
+/* A file input styles almost nothing of itself; what can be reached is the
+   button the browser draws, so that choosing a certificate does not look like
+   a control from another page. */
+input[type=file] {
+  width: 100%; background: var(--inputbg); border: 1px solid var(--border-strong);
+  color: var(--text); padding: 9px 12px; font-size: 13px; font-family: inherit;
+  clip-path: var(--chamfer-sm);
+}
+input[type=file]::file-selector-button {
+  background: var(--border); border: 0; color: var(--text);
+  font-family: var(--mono); font-size: 11px; letter-spacing: 1px; text-transform: uppercase;
+  padding: 6px 10px; margin-right: 12px; cursor: pointer;
+}
+input[type=file]::file-selector-button:hover { background: var(--border-strong); }
+input:focus, select:focus, textarea:focus { outline: 1px solid var(--volt); }
+
+fieldset { border: 1px solid var(--border); padding: 14px; margin: 0 0 16px; }
+fieldset legend {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 1.5px;
+  text-transform: uppercase; color: var(--faint); padding: 0 6px;
+}
+.choice { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 12px; }
+.choice:last-child { margin-bottom: 0; }
+.choice input { margin-top: 3px; }
+.choice .t { font-weight: 600; }
+.choice .d { color: var(--muted); font-size: 12px; }
+
+.btn {
+  background: var(--volt); color: var(--on-volt); border: none;
+  clip-path: var(--chamfer-sm); padding: 10px 18px; font-size: 13px;
+  font-weight: 600; cursor: pointer; font-family: inherit;
+}
+.btn:hover:not(:disabled) { background: #E6E6E6; }
+.btn:disabled { opacity: .4; cursor: not-allowed; }
+.ghost {
+  background: var(--inputbg); color: var(--text); border: 1px solid var(--border-strong);
+  clip-path: var(--chamfer-sm); padding: 10px 18px; font-size: 13px;
+  cursor: pointer; font-family: inherit; text-decoration: none; display: inline-block;
+}
+.ghost:hover { border-color: rgba(255, 255, 255, .35); }
+.actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 18px; }
+
+.notice {
+  border: 1px solid var(--border-strong); clip-path: var(--chamfer-sm);
+  padding: 12px 14px; margin-bottom: 16px; font-size: 13px;
+}
+.notice.bad { border-color: var(--bad); color: var(--bad); }
+.notice.good { border-color: var(--good); color: var(--good); }
+
+.steps { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
+.steps .step {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 1.5px;
+  text-transform: uppercase; color: var(--faint);
+  border-bottom: 2px solid var(--border); padding: 0 0 6px;
+}
+.steps .step.on { color: var(--text); border-bottom-color: var(--volt); }
+.steps .step.done { color: var(--muted); border-bottom-color: var(--border-strong); }
+
+table.facts { width: 100%; border-collapse: collapse; }
+table.facts th, table.facts td {
+  text-align: left; padding: 9px 0; border-top: 1px solid var(--border);
+  vertical-align: top; font-weight: 400;
+}
+table.facts tr:first-child th, table.facts tr:first-child td { border-top: none; }
+table.facts th {
+  color: var(--faint); font-family: var(--mono); font-size: 10px;
+  letter-spacing: 1.5px; text-transform: uppercase; width: 40%; padding-right: 16px;
+}
+table.facts td.num { font-family: var(--mono); }
+
+/* A table of rows rather than of name/value pairs: the pairing page lists what
+   is waiting, so every column is as wide as it needs to be and the first one is
+   not a label. */
+table.facts.rows th { width: auto; }
+table.facts.rows td.code {
+  font-family: var(--mono); font-size: 16px; letter-spacing: 2px; font-weight: 600;
+}
+
+/* One row of controls inside a table cell, wrapping on a narrow screen rather
+   than pushing the table sideways. */
+form.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+form.row input[type=text], form.row select { width: auto; min-width: 150px; }
+
+.pill {
+  font-size: 10px; font-family: var(--mono); text-transform: uppercase;
+  letter-spacing: 1.5px; padding: 4px 9px; clip-path: var(--chamfer-sm);
+  border: 1px solid var(--border-strong); color: var(--muted);
+}
+.pill.on { background: var(--volt); color: var(--on-volt); border-color: var(--volt); font-weight: 600; }
+.pill.bad { border-color: var(--bad); color: var(--bad); }
+
+/* The settings page. A group is a card, a card is a form, and each saves on
+   its own — so the page needs a heading inside a card, a number field, a way
+   to show a setting that is present but not in this build, and somewhere to
+   print the discovery document. */
+h3 { font-size: 14px; margin: 18px 0 6px; font-weight: 600; }
+.card > form + form { border-top: 1px solid var(--border); margin-top: 18px; padding-top: 4px; }
+
+input[type=number] {
+  width: 100%; background: var(--inputbg); border: 1px solid var(--border-strong);
+  color: var(--text); padding: 10px 12px; font-size: 14px; font-family: inherit;
+  clip-path: var(--chamfer-sm);
+}
+
+/* A setting this build does not have. It is shown rather than hidden, so it
+   has to look unavailable without looking broken. */
+label.field.off .lbl, label.field.off .hint { color: var(--faint); }
+label.field.off input, label.field.off select { opacity: .45; cursor: not-allowed; }
+
+/* What a stored credential is allowed to say about itself. */
+p.keystate { font-size: 12px; color: var(--muted); margin: -8px 0 16px; }
+p.keystate .pill { margin-right: 8px; }
+
+/* The discovery document, printed as it would be served. It scrolls rather
+   than wrapping, because JSON that wraps is JSON nobody can read. */
+pre.doc {
+  font-family: var(--mono); font-size: 12px; line-height: 1.55; margin: 0;
+  background: var(--nested); border: 1px solid var(--border); padding: 14px;
+  clip-path: var(--chamfer-sm); overflow-x: auto; color: var(--muted);
+}
+
+/* A path, a digest, an address: something the operator reads carefully or
+   copies. It breaks anywhere rather than pushing a table sideways, because a
+   SHA-256 is sixty-four characters and a card is not. */
+.path {
+  font-family: var(--mono); font-size: 12px; word-break: break-all; color: var(--text);
+}
+
+/* A signing route this build does not have. Disabled, and described: the
+   choice is real even where the button is not, and an operator meeting it for
+   the first time should be able to read all three. */
+.choice.off .t, .choice.off .d { color: var(--faint); }
+.choice.off input { opacity: .45; cursor: not-allowed; }
+.choice .d.why { color: var(--muted); margin-top: 4px; display: block; }
+
+/* One row of controls under a form, wrapping on a narrow screen. */
+form.row.tight { margin-top: 14px; }
+
+.card.danger { border-color: rgba(255, 107, 107, .35); }
+.card.danger h2 { color: var(--bad); }
+.btn.warn { background: var(--bad); color: var(--on-volt); }
+.btn.warn:hover:not(:disabled) { background: #FF8585; }
+
+/* The sort links above the roster. They are the section navigation in a
+   smaller key, because they do the same job: say where you are and offer the
+   two places you are not. */
+nav.sorts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+nav.sorts a {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 1.5px;
+  text-transform: uppercase; padding: 5px 9px;
+  clip-path: var(--chamfer-sm); border: 1px solid var(--border);
+  color: var(--muted); text-decoration: none;
+}
+nav.sorts a:hover { border-color: var(--border-strong); color: var(--text); }
+nav.sorts a.on { background: var(--volt); color: var(--on-volt); border-color: var(--volt); font-weight: 600; }
+
+/* Under a keyset-paginated list. There is no page number because there is no
+   page number to know: a cursor is a position, not an index. */
+.pager { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 16px; }
+
+/* A progress bar for the one job in this panel that takes longer than a
+   request. It is an element and not a script: the page refreshes itself and
+   the bar is redrawn at its new width. */
+.progress {
+  height: 6px; background: var(--nested); border: 1px solid var(--border);
+  margin: 10px 0 6px; overflow: hidden;
+}
+.progress span { display: block; height: 100%; background: var(--volt); }
+
+footer.foot { margin-top: 28px; color: var(--faint); font-size: 12px; }
+footer.foot a { color: var(--muted); }
+
+@media (max-width: 520px) {
+  .wrap { padding: 20px 14px 48px; }
+  table.facts th { width: 50%; }
+}

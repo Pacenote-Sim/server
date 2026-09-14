@@ -1,0 +1,321 @@
+# golangci-lint v2 configuration. Validate with: golangci-lint config verify
+#
+# Adapted from the capture client's configuration. The linter set is identical;
+# the dependency rules are the part that had to change, because this module's
+# layering is different: one package owns PostgreSQL, one package owns
+# Prometheus, and nothing else may reach for either.
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+  modules-download-mode: readonly
+
+output:
+  show-stats: true
+
+linters:
+  default: none
+  enable:
+    - bodyclose
+    - copyloopvar
+    - depguard
+    - errcheck
+    - errorlint
+    - exhaustive
+    - gocritic
+    - gosec
+    - govet
+    - ineffassign
+    - intrange
+    - nilerr
+    - nolintlint
+    - paralleltest
+    - prealloc
+    - revive
+    - staticcheck
+    - testifylint
+    - thelper
+    - unparam
+    - unused
+    - wrapcheck
+
+  settings:
+    depguard:
+      # Every rule below is "strict": only the listed packages may be imported
+      # from the matched files. The deny rules at the end are the twin of the
+      # allow rules, so a new package cannot quietly acquire a database driver.
+      rules:
+        logging-stdlib-only:
+          list-mode: strict
+          files:
+            - "!$test"
+            - "**internal/logging/**"
+          allow:
+            - $gostd
+        config-stdlib-and-wire:
+          list-mode: strict
+          files:
+            - "!$test"
+            - "**internal/config/**"
+          allow:
+            - $gostd
+            - github.com/pacenote-sim/protocol/wire
+        auth-stdlib-and-crypto:
+          list-mode: strict
+          files:
+            - "!$test"
+            - "**internal/auth/**"
+          allow:
+            - $gostd
+            - golang.org/x/crypto
+        buildinfo-stdlib-only:
+          list-mode: strict
+          files:
+            - "!$test"
+            - "**internal/buildinfo/**"
+          allow:
+            - $gostd
+        db-owns-the-driver:
+          list-mode: strict
+          files:
+            - "!$test"
+            - "**internal/db/**"
+          allow:
+            - $gostd
+            - github.com/pacenote-sim/protocol
+            - github.com/pacenote-sim/server/internal/config
+            - github.com/pacenote-sim/server/internal/db/gen
+            - github.com/jackc/pgx/v5
+            - github.com/pressly/goose/v3
+        # The twin of db-owns-the-driver. depguard's allow rules only constrain
+        # the files they match, so without this a new package could import pgx
+        # and no rule would notice.
+        nothing-else-speaks-postgres:
+          list-mode: lax
+          files:
+            - "**"
+            - "!**internal/db/**"
+            # A test that proves a plugin's role cannot read the core schema
+            # has to connect as that role. internal/db is the pool connected as
+            # the server, so it cannot make that connection on the test's
+            # behalf — the point of the test is that it is somebody else.
+            - "!$test"
+          deny:
+            - pkg: github.com/jackc/pgx
+              desc: internal/db owns the database. Add a typed method there instead.
+            - pkg: github.com/pressly/goose
+              desc: internal/db owns the migrations. They run from db.Migrate.
+            - pkg: database/sql
+              desc: internal/db owns the database. pgx speaks the native protocol.
+        # internal/plugins owns the process boundary: it is the only package
+        # that starts a plugin, and the only one that knows go-plugin exists.
+        plugins-own-the-process-boundary:
+          list-mode: strict
+          files:
+            - "!$test"
+            - "**internal/plugins/**"
+          allow:
+            - $gostd
+            - github.com/pacenote-sim/plugin
+            - github.com/pacenote-sim/server/internal/auth
+            - github.com/pacenote-sim/server/internal/db
+            - github.com/hashicorp/go-plugin
+            - github.com/hashicorp/go-hclog
+        # The twin of the rule above. Everything else reaches plugins through
+        # the host, so a handler cannot start a process of its own.
+        nothing-else-runs-plugins:
+          list-mode: lax
+          files:
+            - "**"
+            - "!**internal/plugins/**"
+          deny:
+            - pkg: github.com/hashicorp/go-plugin
+              desc: internal/plugins owns the plugin host. Ask it instead.
+            - pkg: github.com/hashicorp/go-hclog
+              desc: internal/plugins owns the plugin host, which is the only thing here that speaks hclog.
+        # The metrics registry is one package's business, so a handler cannot
+        # grow a counter that nothing exports.
+        nothing-else-imports-prometheus:
+          list-mode: lax
+          files:
+            - "**"
+            - "!**internal/metrics/**"
+          deny:
+            - pkg: github.com/prometheus
+              desc: internal/metrics owns the registry.
+        tests-use-testing-deps-only:
+          list-mode: strict
+          # depguard ORs the positive globs, so "$test" plus "**internal/**"
+          # would match every internal file; one glob keeps this on tests only.
+          files:
+            - "**internal/**_test.go"
+          allow:
+            - $gostd
+            - github.com/pacenote-sim/server/internal
+            - github.com/pacenote-sim/plugin
+            - github.com/pacenote-sim/protocol
+            - github.com/jackc/pgx/v5
+            - github.com/stretchr/testify
+            - go.uber.org/goleak
+            - golang.org/x/sync
+            # internal/packaging's tests read .goreleaser.yml and the compose
+            # file and check them against the contract in that package, which
+            # needs a YAML parser. It is the same one goose already pulls in,
+            # so it adds nothing to the dependency graph.
+            - go.yaml.in/yaml/v3
+            # depguard matches $gostd by nearest sorted prefix; "go.uber.org/goleak"
+            # sorts between "go" and "go/build" and would shadow the go/* stdlib
+            # tree, so it is listed explicitly.
+            - go/
+    errcheck:
+      check-type-assertions: true
+      check-blank: false
+      exclude-functions:
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+    errorlint:
+      errorf: true
+      asserts: true
+      comparison: true
+    exhaustive:
+      default-signifies-exhaustive: true
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - performance
+        - style
+      disabled-checks:
+        - unnamedResult
+        # Request-scoped value structs — page data, options, one session row —
+        # are passed by value once per request on purpose: a copy is cheaper to
+        # reason about than a pointer that a handler could mutate underneath
+        # the template rendering it.
+        - hugeParam
+        # The same decision, in a loop rather than a call. Ranging over a
+        # handful of plugin statuses or session rows by value costs a few
+        # kilobytes next to the query that fetched them, and the alternative is
+        # a pointer into a slice held while a template renders — which is the
+        # aliasing hugeParam is disabled to avoid.
+        - rangeValCopy
+    gosec:
+      excludes:
+        - G104 # duplicates errcheck
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment
+        # shadow flags `if err := f(); err != nil` inside a function that
+        # already has an err — which is the idiom, not a mistake. Every hit in
+        # this repository was that shape, so the check reports style it cannot
+        # tell from a bug and hides nothing that errcheck and the tests do not
+        # already catch.
+        - shadow
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+      allow-unused: false
+    paralleltest:
+      ignore-missing: false
+    revive:
+      severity: warning
+      rules:
+        - name: blank-imports
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: dot-imports
+        - name: empty-block
+        - name: error-naming
+        - name: error-return
+        - name: error-strings
+        - name: errorf
+        - name: exported
+        - name: increment-decrement
+        - name: indent-error-flow
+        - name: package-comments
+        - name: range
+        - name: receiver-naming
+        - name: redefines-builtin-id
+        - name: superfluous-else
+        - name: time-naming
+        - name: unexported-return
+        - name: unreachable-code
+        - name: unused-parameter
+        - name: var-declaration
+        - name: var-naming
+    staticcheck:
+      checks:
+        - all
+        - -ST1000 # package comments are checked by revive
+    testifylint:
+      enable-all: true
+    thelper:
+      test:
+        first: true
+        name: true
+        begin: true
+    unparam:
+      check-exported: false
+    wrapcheck:
+      ignore-sigs:
+        - .Errorf(
+        - errors.New(
+        - errors.Join(
+        - errors.Unwrap(
+
+  exclusions:
+    generated: lax
+    warn-unused: false
+    rules:
+      # wrapcheck guards the database boundary, where a pgx error must become
+      # one of ours before it travels.
+      - path-except: internal/db/
+        linters:
+          - wrapcheck
+      - path: _test\.go
+        linters:
+          - wrapcheck
+          - gosec
+      # The database tests share one PostgreSQL cluster, and several are
+      # sequential on purpose: subtests that build on the row the one before
+      # them wrote, and the plugin tests, which each create a cluster-wide role
+      # and start a real subprocess. Whether those run at once is a decision
+      # about the cluster they are pointed at, not a rule that holds per test.
+      - path: _postgres_test\.go
+        linters:
+          - paralleltest
+      # sqlc writes this tree. It is reviewed as SQL, not as Go.
+      - path: internal/db/gen/
+        linters:
+          - revive
+          - unused
+          - gocritic
+          - unparam
+          - staticcheck
+
+formatters:
+  enable:
+    - gofumpt
+    - goimports
+  settings:
+    gofumpt:
+      module-path: github.com/pacenote-sim/server
+      extra-rules: false
+    goimports:
+      local-prefixes:
+        - github.com/pacenote-sim/server
+        - github.com/pacenote-sim/plugin
+        - github.com/pacenote-sim/protocol
+  exclusions:
+    generated: lax
+    paths:
+      - internal/db/gen
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  # Report every issue on a line: with the default (true) a depguard violation
+  # is hidden whenever another linter reports on the same line, and the
+  # dependency rule is the one gate that must not hide.
+  uniq-by-line: false

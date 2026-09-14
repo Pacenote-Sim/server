@@ -1,0 +1,7 @@
+{
+  "error": {
+    "code": "rate_limited",
+    "message": "You are sending faster than this server accepts — wait 1 second and carry on.",
+    "retry_after_s": 1
+  }
+}

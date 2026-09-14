@@ -1,0 +1,91 @@
+{{define "content"}}<div class="card">
+    <h1>{{.Form.Name}}</h1>
+    <p class="muted">{{if .Form.Class}}{{.Form.Class}} — {{end}}paired {{datetime .Form.Paired.At}}. <a href="/admin/drivers">Back to the roster</a></p>
+    <table class="facts">
+      <tr><th>Last seen</th><td>{{if .Form.LastSeen.Stale}}<span class="pill bad">quiet</span> {{end}}{{template "moment" .Form.LastSeen}}<span class="faint"> — the last time one of their machines spoke to this server</span></td></tr>
+      <tr><th>Last upload</th><td>{{template "moment" .Form.LastUpload}}<span class="faint"> — the last lap that arrived</span></td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>Recorded</h2>
+    <table class="facts">
+      <tr><th>Laps</th><td class="num">{{count .Form.LapCount}}</td></tr>
+      <tr><th>Stints</th><td class="num">{{count .Form.StintCount}}</td></tr>
+      <tr><th>Storage</th><td class="num">{{bytes .Form.TraceBytes}}<span class="faint"> — their traces, compressed</span></td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>Machines</h2>
+{{if .Form.Devices}}    <table class="facts rows">
+      <tr><th>Machine</th><th>Token</th><th>Paired</th><th>Last used</th><th>Sign out</th></tr>
+{{range .Form.Devices}}      <tr>
+        <td>{{if .Label}}{{.Label}}{{else}}<span class="faint">no label</span>{{end}}</td>
+        <td class="num">{{.TokenPrefix}}…</td>
+        <td>{{template "moment" .Paired}}</td>
+        <td>{{if .IsRevoked}}<span class="pill bad">signed out</span> {{template "moment" .Revoked}}{{else}}{{template "moment" .LastUsed}}{{end}}</td>
+        <td>
+{{if .IsRevoked}}          <span class="faint">already out</span>
+{{else}}          <form method="post" action="/admin/devices/revoke" class="row">
+            <input type="hidden" name="csrf" value="{{$.CSRF}}">
+            <input type="hidden" name="device_id" value="{{.ID}}">
+            <input type="hidden" name="back" value="{{$.Form.Back}}">
+            <button class="ghost" type="submit">Sign out</button>
+          </form>
+{{end}}        </td>
+      </tr>
+{{end}}    </table>
+    <p class="faint">Revoking signs this machine out — {{.Form.Name}} pairs again to keep uploading. It takes effect on that machine's next request rather than at its next restart, and nothing already uploaded is removed.</p>
+{{if .Form.LiveDevices}}    <div class="actions"><a class="ghost" href="{{.Form.RevokeAllHref}}">Sign out every machine of {{.Form.Name}}</a><span class="faint">For a laptop that has gone missing. You see the machines named before anything happens.</span></div>
+{{end}}{{else}}    <p class="muted">{{.Form.Name}} has no machine paired. They start pairing in their client and you approve the code on the pairing page, and it appears here.</p>
+{{end}}  </div>
+
+  <div class="card">
+    <h2>Signed-in browsers</h2>
+{{if .Form.Sessions}}    <p class="muted">Where {{.Form.Name}} is signed in to this server to read their own data. This is separate from their machines above: a machine's token uploads laps, and a browser session reads them.</p>
+    <table class="facts rows">
+      <tr><th>Signed in</th><th>Last used</th><th>Runs out</th><th>Browser</th><th>By</th><th></th></tr>
+{{range .Form.Sessions}}      <tr>
+        <td>{{template "moment" .Signed}}</td>
+        <td>{{template "moment" .LastSeen}}</td>
+        <td>{{template "when" .Expires}}</td>
+        <td>{{.Browser}}</td>
+        <td>{{.By}}</td>
+        <td>
+          <form method="post" action="{{$.Form.SignoutHref}}" style="display:inline">
+            <input type="hidden" name="csrf" value="{{$.CSRF}}">
+            <input type="hidden" name="driver_id" value="{{$.Form.ID}}">
+            <input type="hidden" name="session_id" value="{{.ID}}">
+            <button class="ghost" type="submit">Sign out</button>
+          </form>
+        </td>
+      </tr>
+{{end}}    </table>
+    <form method="post" action="{{.Form.SignoutAllRef}}">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <input type="hidden" name="driver_id" value="{{.Form.ID}}">
+      <div class="actions"><button class="btn warn" type="submit">Sign {{.Form.Name}} out everywhere</button><span class="faint">Their machines keep uploading. This ends only the browsers.</span></div>
+    </form>
+{{else}}    <p class="muted">{{.Form.Name}} is not signed in anywhere. Signing in is something a plugin does — install one that authenticates drivers and they can read their own data here.</p>
+{{end}}  </div>
+
+  <div class="card">
+    <h2>Stints</h2>
+{{if .Form.Recent}}    <table class="facts rows">
+      <tr><th>Started</th><th>Circuit</th><th>Car</th><th>Laps</th><th>Best lap</th><th>Storage</th></tr>
+{{range .Form.Recent}}      <tr>
+        <td><a href="{{.Href}}">{{datetime .Started.At}}</a>{{if not .Finished}}<span class="faint"> — never closed</span>{{end}}</td>
+        <td>{{.Track}}</td>
+        <td>{{.Car}}{{if .CarClass}}<span class="faint"> {{.CarClass}}</span>{{end}}</td>
+        <td class="num">{{count .Laps}}</td>
+        <td class="num">{{laptime .BestLapMs}}</td>
+        <td class="num">{{bytes .TraceBytes}}</td>
+      </tr>
+{{end}}    </table>
+    <p class="faint">Open a stint to see its laps.</p>
+{{template "pager" .Form.Links}}
+{{else}}{{if .Form.OnFirstPage}}    <p class="muted">Nothing recorded yet. A stint appears here the first time {{.Form.Name}}'s client uploads one, which it does as they drive rather than at the end of a session.</p>
+{{else}}    <p class="muted">There is nothing past the page you were on.</p>
+    <div class="actions"><a class="ghost" href="/admin/drivers/{{.Form.ID}}">Back to the first page</a></div>
+{{end}}{{end}}  </div>{{end}}

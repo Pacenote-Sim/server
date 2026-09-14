@@ -1,0 +1,36 @@
+{{define "content"}}<div class="card">
+    <h1>Drivers</h1>
+    <p class="muted">Everyone who has been paired to this server, and what they have recorded. Last seen is when one of their machines last spoke to this server; last upload is when their newest lap arrived — a client that is running but not recording shows a recent one and a stale other.</p>
+    <nav class="sorts">
+{{range .Form.Sorts}}      <a class="{{if .On}}on{{end}}" href="{{.Href}}">{{.Name}}</a>
+{{end}}    </nav>
+  </div>
+
+  <div class="card">
+{{if .Form.Rows}}    <table class="facts rows">
+      <tr><th>Driver</th><th>Last seen</th><th>Last upload</th><th>Laps</th><th>Stints</th><th>Storage</th></tr>
+{{range .Form.Rows}}      <tr>
+        <td><a href="{{.Href}}">{{.Name}}</a>{{if .Class}}<span class="faint"> {{.Class}}</span>{{end}}</td>
+        <td>{{if .LastSeen.Stale}}<span class="pill bad">quiet</span> {{end}}{{template "moment" .LastSeen}}</td>
+        <td>{{template "moment" .LastUpload}}</td>
+        <td class="num">{{count .Laps}}</td>
+        <td class="num">{{count .Stints}}</td>
+        <td class="num">{{bytes .TraceBytes}}</td>
+      </tr>
+{{end}}    </table>
+{{template "pager" .Form.Links}}
+{{else}}{{if .Form.OnFirstPage}}    <h2>Nobody yet</h2>
+    <p class="muted">A driver appears here the first time you approve their pairing. They start it in their client, read you the six-character code, and you approve it on the pairing page — the name you type there is the name that shows up here.</p>
+    <div class="actions"><a class="ghost" href="/admin/pairings">Go to pairing</a></div>
+{{else}}    <p class="muted">There is nothing past the page you were on.</p>
+    <div class="actions"><a class="ghost" href="/admin/drivers">Back to the first page</a></div>
+{{end}}{{end}}  </div>
+
+  <div class="card">
+    <h2>Grouping drivers</h2>
+    <label class="field off">
+      <span class="lbl">Teams</span>
+      <input type="text" value="Not in this build" disabled>
+      <span class="hint">{{enterprise}} It puts drivers into teams with their own standings and a shared reference lap, and here every driver drives alone.</span>
+    </label>
+  </div>{{end}}

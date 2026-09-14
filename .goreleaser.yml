@@ -1,0 +1,108 @@
+# GoReleaser configuration for Pacenote community edition.
+#
+# Validate with `goreleaser check`. Produce the artefacts without a tag with
+# `make dist`; rehearse the whole release with `make release-dry`.
+#
+# What a tag produces: one zip per platform, each holding the binary and the
+# four files an operator reads, plus one checksums.txt covering all of them, an
+# SBOM per archive, and a GitHub release whose notes are the CHANGELOG.md
+# section for that version. The container image is built by the release
+# workflow rather than here — it compiles from source in a multi-stage
+# Dockerfile whose context is the workspace directory above this repository,
+# which is not a shape GoReleaser's docker builder can express.
+version: 2
+
+project_name: pacenote-ce
+
+before:
+  hooks:
+    # Verify the dependency checksums against go.sum before anything is built,
+    # so a tampered module cache cannot reach a release binary.
+    - go mod verify
+
+builds:
+  - id: pacenote-server
+    main: ./cmd/pacenote-server
+    binary: pacenote-server
+    env:
+      # No cgo, so every binary is static and there is nothing to install
+      # beside it. It is also what makes linux/arm64 a cross-compile with no
+      # toolchain.
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      # Windows on arm64 is not a platform any team runs a server on, and
+      # every combination shipped is a combination supported.
+      - goos: windows
+        goarch: arm64
+    flags:
+      # -trimpath so the binary carries no build machine's paths, which makes
+      # two builds of the same commit compare equal.
+      - -trimpath
+    ldflags:
+      # -s -w drop the symbol table and DWARF: an operator does not debug this
+      # binary, and it is about a third smaller without them.
+      #
+      # The version is written in rather than left to the build information,
+      # because it is the same mechanism the container image has to use and one
+      # mechanism is easier to trust than two. See internal/buildinfo.
+      - -s -w -X github.com/pacenote-sim/server/internal/buildinfo.Stamp=v{{ .Version }}
+    # The commit's own time, so a rebuild of a tag produces the same bytes.
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: pacenote-ce
+    ids:
+      - pacenote-server
+    # zip everywhere, including Linux and macOS: an operator who has just
+    # downloaded one file should not have to know which of two commands opens
+    # it.
+    formats:
+      - zip
+    # pacenote-ce_0.1.0_linux_amd64.zip
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    # No wrapping directory: the binary and the files beside it land where the
+    # README says they are, next to each other.
+    wrap_in_directory: false
+    files:
+      # strip_parent so packaging/README.md arrives as README.md — it is the
+      # first thing an operator reads and it should not be one level down.
+      - src: packaging/README.md
+        strip_parent: true
+      - src: packaging/docker-compose.yml
+        strip_parent: true
+      - src: LICENSE
+      - src: CHANGELOG.md
+
+checksum:
+  # One file covering every archive, which is what the README tells an operator
+  # to check.
+  name_template: checksums.txt
+  algorithm: sha256
+
+sboms:
+  - id: archive
+    artifacts: archive
+
+changelog:
+  # The release notes come from CHANGELOG.md, passed in with --release-notes by
+  # the release workflow. A generated commit list underneath it would say the
+  # same thing worse.
+  disable: true
+
+release:
+  draft: false
+  # A tag with a pre-release suffix marks the release as one, so v1.0.0-rc1
+  # does not become the download people land on.
+  prerelease: auto
+  name_template: "v{{ .Version }}"
+
+snapshot:
+  # What `make dist` stamps when there is no tag to read.
+  version_template: "{{ incpatch .Version }}-snapshot"

@@ -1,0 +1,10 @@
+{
+  "error": {
+    "code": "client_too_old",
+    "message": "This client is too old for this server — update it to version 1.0.0 or newer and it will carry on where it left off.",
+    "detail": {
+      "client_version": "0.9.3",
+      "min_client": "1.0.0"
+    }
+  }
+}

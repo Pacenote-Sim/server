@@ -1,0 +1,114 @@
+{{define "content"}}<div class="card">
+    <h1>Settings</h1>
+    <p class="muted">Everything this server is, grouped the way you think about it. Each group saves on its own, and a change takes effect on the next request — you do not have to restart anything.</p>
+  </div>
+
+  <div class="card">
+    <h2>Identity</h2>
+    <p class="muted">What a driver sees when their client connects, and what the discovery document below publishes.</p>
+    <form method="post" action="/admin/settings/identity">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <label class="field">
+        <span class="lbl">Organisation</span>
+        <input type="text" name="organisation" value="{{.Form.Identity.Organisation}}" autocomplete="off" required>
+        <span class="hint">The full name, shown on the pairing screen and in the client's header.</span>
+      </label>
+      <label class="field">
+        <span class="lbl">Short name</span>
+        <input type="text" name="short_name" value="{{.Form.Identity.ShortName}}" autocomplete="off" placeholder="IGTC">
+        <span class="hint">Shown where the full name does not fit. Leave it empty and the server takes the initials — "Iberian GT Championship" becomes IGTC.</span>
+      </label>
+      <label class="field">
+        <span class="lbl">Logo</span>
+        <input type="text" name="logo" class="mono" value="{{.Form.Identity.Logo}}" autocomplete="off" placeholder="https://example.com/logo.png">
+        <span class="hint">A full address the client fetches over the internet — this server does not host it. Leave it empty for no logo.</span>
+      </label>
+      <label class="field">
+        <span class="lbl">Accent colour</span>
+        <input type="text" name="accent" class="mono" value="{{.Form.Identity.Accent}}" autocomplete="off" placeholder="#C6F24B">
+        <span class="hint">A hex colour the client paints its highlights with. Leave it empty and the client keeps its own.</span>
+      </label>
+      <label class="field off">
+        <span class="lbl">Single sign-on</span>
+        <input type="text" value="" placeholder="Not in this build" disabled>
+        <span class="hint">{{enterprise}}</span>
+      </label>
+      <div class="actions"><button class="btn" type="submit">Save identity</button></div>
+    </form>
+  </div>
+
+{{if .Form.Discovery}}  <div class="card">
+    <h2>Discovery document</h2>
+    <p class="muted">This is what a client fetches before anything else, exactly as this server would serve it now. Every field above ends up here, and a client caches it for five minutes.</p>
+    <pre class="doc">{{.Form.Discovery}}</pre>
+  </div>
+{{end}}
+  <div class="card">
+    <h2>Limits</h2>
+    <p class="muted">These are the numbers the discovery document publishes and the rate limiter enforces — one set, not two, so a client that obeys what it was told is never refused by this server.</p>
+    <form method="post" action="/admin/settings/limits">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <label class="field">
+        <span class="lbl">Trace points</span>
+        <input type="number" name="trace_points" class="mono" value="{{.Form.Limits.TracePoints}}" min="10" max="10000">
+        <span class="hint">The most samples in one lap trace. A longer trace is refused outright, so raising this costs storage on every lap.</span>
+      </label>
+      <label class="field">
+        <span class="lbl">Laps per request</span>
+        <input type="number" name="laps_per_request" class="mono" value="{{.Form.Limits.LapsPerRequest}}" min="1" max="1000">
+        <span class="hint">How many laps a client may upload at once. A client that was offline drains its queue in batches of this.</span>
+      </label>
+      <label class="field">
+        <span class="lbl">Live interval</span>
+        <input type="number" name="live_interval_ms" class="mono" value="{{.Form.Limits.LiveIntervalMs}}" min="100" max="600000">
+        <span class="hint">Milliseconds between live samples. Lower is a smoother trace for whoever is watching and more requests a second from every car on track.</span>
+      </label>
+      <label class="field">
+        <span class="lbl">Summary interval</span>
+        <input type="number" name="summary_interval_ms" class="mono" value="{{.Form.Limits.SummaryIntervalMs}}" min="100" max="600000">
+        <span class="hint">Milliseconds between stint summaries. A summary is a whole-document replace, so this is rarely worth lowering.</span>
+      </label>
+      <label class="field">
+        <span class="lbl">Largest body</span>
+        <input type="number" name="max_body_bytes" class="mono" value="{{.Form.Limits.MaxBodyBytes}}" min="65536" max="67108864">
+        <span class="hint">Bytes in one request. It caps what a single upload can cost this server in memory, so it is a memory limit as much as a size limit.</span>
+      </label>
+      <label class="field off">
+        <span class="lbl">Field interval</span>
+        <input type="number" class="mono" value="{{.Form.Limits.FieldIntervalMs}}" disabled>
+        <span class="hint">{{enterprise}} The field relay it paces is what feeds a broadcast timing view, and this build does not have it.</span>
+      </label>
+      <div class="actions"><button class="btn" type="submit">Save limits</button></div>
+    </form>
+  </div>
+
+  <div class="card danger">
+    <h2>Danger zone</h2>
+    <p class="muted">Both of these take effect the moment you confirm, and neither can be undone.</p>
+
+    <form method="post" action="/admin/settings/danger">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <input type="hidden" name="action" value="regenerate_data_key">
+      <h3>Regenerate the data key</h3>
+      <p class="muted">The data key encrypts every credential this server stores — the voice key above, and whatever your plugins hold. Replacing it re-seals all of them with the new key and writes it into the configuration file beside this binary. A database backup taken before now can no longer be opened with it, so keep the old configuration file if you keep old backups.</p>
+{{if .Form.HasDataKey}}      <label class="field">
+        <span class="lbl">Type regenerate to confirm</span>
+        <input type="text" name="confirm" class="mono" value="" autocomplete="off" placeholder="regenerate">
+      </label>
+      <div class="actions"><button class="btn warn" type="submit">Regenerate the data key</button></div>
+{{else}}      <p class="faint">This server has no data key it can rewrite, so there is nothing to regenerate here. Set one in the configuration file beside the binary and restart.</p>
+{{end}}    </form>
+
+    <form method="post" action="/admin/settings/danger" class="stacked">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <input type="hidden" name="action" value="revoke_devices">
+      <h3>Revoke every device token</h3>
+      <p class="muted">This revokes all {{count .Form.Devices}} paired machines at once. Every driver pairs again before their next upload, and anything queued on their machine waits until they do. Nothing already uploaded is touched.</p>
+      <label class="field">
+        <span class="lbl">Type revoke to confirm</span>
+        <input type="text" name="confirm" class="mono" value="" autocomplete="off" placeholder="revoke">
+      </label>
+      <div class="actions"><button class="btn warn" type="submit">Revoke every device token</button></div>
+    </form>
+  </div>
+{{end}}

@@ -1,0 +1,18 @@
+{{define "content"}}<div class="card">
+    <h1>Pair a machine</h1>
+    <p class="muted">Your client has asked to join {{.Form.Organisation}}. It is not paired yet — somebody who administers this server has to approve it.</p>
+{{if .Form.Code}}    <table class="facts">
+      <tr><th>Your code</th><td class="num">{{.Form.Code}}</td></tr>
+    </table>
+    <p class="muted">Check that this is the code on the screen your client printed it on. If it is not, close this page — a code you did not start is not yours to approve.</p>
+{{else}}    <p class="muted">Your client printed a short code when you pressed pair. Read it out to whoever runs this server.</p>
+{{end}}
+    <h2>What happens next</h2>
+    <p class="muted">Give the code to your administrator. They approve it here, on this server, while signed in — there is no password for you to set and nothing for you to install beyond the client you already have.</p>
+    <p class="muted">Your client is waiting and will carry on by itself the moment it is approved. Leave it running. If it has been more than a few minutes, press pair again for a fresh code: they expire, which is what stops one written on a whiteboard from working next week.</p>
+  </div>
+
+  <div class="card">
+    <h2>If you administer this server</h2>
+    <p class="muted">Approve it on the <a href="/admin/pairings">pairing page</a>. You will be asked to sign in.</p>
+  </div>{{end}}

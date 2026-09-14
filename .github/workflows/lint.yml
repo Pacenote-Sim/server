@@ -1,0 +1,106 @@
+name: lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lint-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: server
+
+jobs:
+  golangci:
+    name: golangci-lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: server
+          persist-credentials: false
+      - uses: ./server/.github/actions/go-workspace
+        with:
+          protocol-token: ${{ secrets.PROTOCOL_TOKEN }}
+
+      - uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.13.2 # matches the local toolchain; Renovate bumps it
+          working-directory: server
+          verify: true
+
+      # The build-tagged files — the database suite and the packaging tests —
+      # are invisible to the run above, and they are where a database driver or
+      # a forgotten error check would hide.
+      - name: golangci-lint (build-tagged files)
+        run: |
+          golangci-lint run --build-tags postgres ./...
+          golangci-lint run --build-tags dist ./internal/packaging/...
+
+  vet:
+    name: go vet, gofumpt, tidy
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: server
+          persist-credentials: false
+      - uses: ./server/.github/actions/go-workspace
+        with:
+          protocol-token: ${{ secrets.PROTOCOL_TOKEN }}
+
+      - name: go vet
+        run: |
+          go vet ./...
+          go vet -tags postgres ./...
+          go vet -tags dist ./internal/packaging/...
+
+      - name: gofumpt
+        run: |
+          go install mvdan.cc/gofumpt@v0.12.0
+          test -z "$(gofumpt -l .)" || { gofumpt -l .; exit 1; }
+
+      # -diff fails rather than rewriting, so the module graph a tag builds from
+      # is the one that was reviewed.
+      - name: go mod tidy is a no-op
+        run: go mod tidy -diff
+
+      # A shell script in the release path is a shell script that runs at a tag
+      # and nowhere else, which is exactly when nobody is watching.
+      - name: shellcheck the release scripts
+        run: shellcheck scripts/*.sh
+
+  release-config:
+    name: goreleaser check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: server
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: ./server/.github/actions/go-workspace
+        with:
+          protocol-token: ${{ secrets.PROTOCOL_TOKEN }}
+
+      - uses: goreleaser/goreleaser-action@v7
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: check
+          workdir: server
+
+      # The release notes come from CHANGELOG.md, so an extractor that has
+      # stopped finding sections is a release that publishes nothing. This
+      # checks it against the newest one, before a tag depends on it.
+      - name: The release notes extractor still finds a section
+        run: ./scripts/release-notes.sh latest

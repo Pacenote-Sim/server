@@ -1,0 +1,80 @@
+{{define "content"}}<div class="card">
+    <h1>Data</h1>
+    <p class="muted">What this server is holding and what it costs you. Traces are the bulk of it — one lap is a couple of kilobytes and a season is hundreds of thousands of laps — so they are the first thing here rather than something you find out when a disk fills.</p>
+  </div>
+
+  <div class="card">
+    <h2>What is stored</h2>
+    <table class="facts">
+      <tr><th>Database</th><td class="num">{{bytes .Form.Stats.DatabaseBytes}}<span class="faint"> — everything, indexes included</span></td></tr>
+      <tr><th>Lap traces</th><td class="num">{{bytes .Form.Stats.TraceBytes}}{{if .Form.TraceShare}}<span class="faint"> — {{.Form.TraceShare}} of the database, across {{count .Form.Stats.Traces}} laps</span>{{end}}</td></tr>
+      <tr><th>Laps</th><td class="num">{{count .Form.Stats.Laps}}{{if .Form.PrunedLaps}}<span class="faint"> — {{count .Form.PrunedLaps}} of them keep their time but no trace</span>{{end}}</td></tr>
+      <tr><th>Stints</th><td class="num">{{count .Form.Stats.Stints}}</td></tr>
+      <tr><th>Drivers</th><td class="num">{{count .Form.Stats.Drivers}}</td></tr>
+      <tr><th>Oldest record</th><td>{{template "moment" .Form.OldestStint}}</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>Storage per driver</h2>
+{{if .Form.Storage}}    <p class="muted">Their traces, compressed, largest first.</p>
+    <table class="facts rows">
+      <tr><th>Driver</th><th>Laps</th><th>Storage</th><th>Share</th></tr>
+{{range .Form.Storage}}      <tr>
+        <td><a href="{{.Href}}">{{.Name}}</a></td>
+        <td class="num">{{count .Laps}}</td>
+        <td class="num">{{bytes .TraceBytes}}</td>
+        <td class="num">{{.Share}}</td>
+      </tr>
+{{end}}    </table>
+{{if .Form.StorageMore}}    <p class="faint">{{count .Form.StorageMore}} more drivers hold nothing yet.</p>
+{{end}}{{else}}    <p class="muted">Nothing is stored yet. A driver's client uploads laps as they drive, and each one appears against their name here with what its trace costs.</p>
+{{end}}  </div>
+
+  <div class="card">
+    <h2>Retention</h2>
+    <p class="muted">How long a lap's trace is kept. The lap itself is never deleted here — its number, its time and the stint it belongs to stay, so a driver's record survives their traces being cleared and only the shape of the lap goes.</p>
+    <form method="post" action="/admin/data/retention">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <label class="field">
+        <span class="lbl">Keep traces for</span>
+        <input type="number" name="trace_months" class="mono" value="{{.Form.RetentionMonths}}" min="0" max="{{.Form.MaxMonths}}" step="1">
+        <span class="hint">Months, counted from the lap itself. Set it to 0 to keep every trace for ever, which is what this server does until you say otherwise.</span>
+      </label>
+      <div class="actions"><button class="btn" type="submit">Save retention</button><span class="faint">Saving deletes nothing — it sets the line, and you run the prune below.</span></div>
+    </form>
+  </div>
+
+  <div class="card{{if .Form.HasPreview}} danger{{end}}">
+    <h2>Prune</h2>
+{{if .Form.PruneRunning}}    <p class="muted">Clearing {{count .Form.Prune.Done}} of about {{count .Form.Prune.Total}} lap traces, started by {{.Form.Prune.Actor}} at {{datetime .Form.Prune.StartedAt}}. This page follows it on its own — you can leave it open or come back.</p>
+    <div class="progress"><span style="width:{{.Form.Prune.Percent}}%"></span></div>
+    <p class="faint">{{.Form.Prune.Percent}}% — the laps and their times are untouched; only the traces are going.</p>
+{{else}}{{if .Form.KeepsForever}}    <p class="muted">Retention is set to keep every trace, so there is nothing to prune. Set a number of months above and what it would clear appears here before you run anything.</p>
+{{else}}{{if .Form.HasPreview}}{{if .Form.Preview.Empty}}    <p class="muted">Nothing to prune. No trace on this server is older than {{.Form.RetentionLabel}} — the oldest record here is from {{datetime .Form.Stats.OldestLapAt}}.</p>
+{{else}}    <p class="muted">This would clear the traces of <strong>{{count .Form.Preview.Laps}} laps</strong> and free <strong>{{bytes .Form.Preview.TraceBytes}}</strong> — every lap started before {{datetime .Form.PreviewCutoff}}, the oldest from {{datetime .Form.Preview.OldestAt}} and the newest from {{datetime .Form.Preview.NewestAt}}. Those laps keep their number and their time; their traces do not come back, and a backup is the only way to change your mind.</p>
+    <form method="post" action="/admin/data/prune">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <label class="field">
+        <span class="lbl">Type {{.Form.ConfirmationIs}} to confirm</span>
+        <input type="text" name="confirm" class="mono" value="" autocomplete="off" placeholder="{{.Form.ConfirmationIs}}">
+      </label>
+      <div class="actions"><button class="btn warn" type="submit">Clear {{count .Form.Preview.Laps}} lap traces</button><span class="faint">It runs in the background — you do not have to keep this page open.</span></div>
+    </form>
+{{end}}{{else}}    <p class="muted">What a prune would clear could not be counted just now, so there is nothing to confirm against. Load this page again.</p>
+{{end}}{{end}}{{end}}
+{{if .Form.PruneFinished}}    <table class="facts">
+      <tr><th>Last prune</th><td>{{if .Form.Prune.Err}}<span class="pill bad">stopped early</span> after {{count .Form.Prune.Done}} of {{count .Form.Prune.Total}} lap traces — {{.Form.Prune.Err}}{{else}}cleared {{count .Form.Prune.Done}} lap traces{{end}}</td></tr>
+      <tr><th>Started by</th><td>{{.Form.Prune.Actor}}<span class="faint"> at {{datetime .Form.Prune.StartedAt}}</span></td></tr>
+    </table>
+{{end}}  </div>
+
+  <div class="card">
+    <h2>Keeping a copy</h2>
+    <p class="muted">Pruning is not a backup — it only ever removes. Take a copy of the database with your own tooling before you run one, and keep it somewhere this server cannot reach.</p>
+    <label class="field off">
+      <span class="lbl">Scheduled export</span>
+      <input type="text" value="Not in this build" disabled>
+      <span class="hint">{{enterprise}} It writes laps and traces to object storage on a schedule, so a prune here is a copy moving rather than data going.</span>
+    </label>
+  </div>{{end}}

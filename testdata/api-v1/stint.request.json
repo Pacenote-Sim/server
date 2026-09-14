@@ -1,0 +1,14 @@
+{
+  "sim": "iracing",
+  "track": "Circuit de Barcelona-Catalunya",
+  "track_id": "barcelona gp",
+  "car": "Ferrari 296 GT3",
+  "car_class": "gt3",
+  "session_type": "practice",
+  "started_at": "2026-09-12T14:03:11+02:00",
+  "sectors": [
+    0,
+    0.31,
+    0.68
+  ]
+}

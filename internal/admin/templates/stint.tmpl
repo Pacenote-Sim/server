@@ -1,0 +1,32 @@
+{{define "content"}}<div class="card">
+    <h1>{{.Form.Track}}</h1>
+    <p class="muted">{{.Form.Car}}{{if .Form.CarClass}}, {{.Form.CarClass}}{{end}} — driven by <a href="{{.Form.DriverHref}}">{{.Form.DriverName}}</a>.</p>
+    <table class="facts">
+      <tr><th>Started</th><td class="num">{{datetime .Form.Started.At}}<span class="faint"> — {{since .Form.Started.Ago}} ago</span></td></tr>
+      <tr><th>Ran for</th><td>{{if .Form.IsFinished}}{{since .Form.Ran}}{{else}}<span class="faint">still open — the client never closed it, which is what a crash mid-session leaves behind</span>{{end}}</td></tr>
+      <tr><th>Session</th><td>{{.Form.SessionType}}</td></tr>
+      <tr><th>Laps</th><td class="num">{{count .Form.LapCount}}</td></tr>
+      <tr><th>Best clean lap</th><td class="num">{{laptime .Form.BestLapMs}}</td></tr>
+      <tr><th>Storage</th><td class="num">{{bytes .Form.TraceBytes}}<span class="faint"> — the traces of these laps, compressed</span></td></tr>
+      <tr><th>Simulator</th><td class="num">{{.Form.Sim}}</td></tr>
+      <tr><th>Stint</th><td class="num">{{.Form.ID}}</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>Laps</h2>
+{{if .Form.Laps}}    <table class="facts rows">
+      <tr><th>Lap</th><th>Time</th><th>Kind</th><th>Started</th><th>Trace</th></tr>
+{{range .Form.Laps}}      <tr>
+        <td class="num">{{.Number}}</td>
+        <td class="num">{{laptime .LapMs}}</td>
+        <td>{{if .Clean}}{{.Kind}}{{else}}<span class="faint">{{.Kind}}</span>{{end}}</td>
+        <td class="num">{{datetime .Started.At}}</td>
+        <td class="num">{{if .HasTrace}}{{bytes .TraceBytes}}{{else}}<span class="faint">none — the lap and its time are kept, the trace is not</span>{{end}}</td>
+      </tr>
+{{end}}    </table>
+{{template "pager" .Form.Links}}
+{{else}}{{if .Form.OnFirstPage}}    <p class="muted">This stint holds no lap. A client opens a stint when a session starts and uploads laps as they are completed, so a stint with none is one where nobody finished a lap before the session ended.</p>
+{{else}}    <p class="muted">There is nothing past the page you were on.</p>
+    <div class="actions"><a class="ghost" href="/admin/stints/{{.Form.ID}}">Back to the first page</a></div>
+{{end}}{{end}}  </div>{{end}}

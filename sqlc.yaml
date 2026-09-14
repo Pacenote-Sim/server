@@ -1,0 +1,20 @@
+# sqlc turns the plain SQL in internal/db/queries into typed Go methods against
+# the schema in internal/db/migrations. No ORM, no query builder, no reflection
+# on the request path, and every query reviewable as SQL.
+#
+# Regenerate with `make sqlc`. The generated tree is committed so a build needs
+# only a Go toolchain.
+version: "2"
+sql:
+  - engine: "postgresql"
+    schema: "internal/db/migrations"
+    queries: "internal/db/queries"
+    gen:
+      go:
+        package: "gen"
+        out: "internal/db/gen"
+        sql_package: "pgx/v5"
+        emit_empty_slices: true
+        emit_pointers_for_null_types: true
+        emit_result_struct_pointers: false
+        emit_params_struct_pointers: false

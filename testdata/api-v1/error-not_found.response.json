@@ -1,0 +1,12 @@
+{
+  "error": {
+    "code": "not_found",
+    "message": "There is no reference lap for that track and car yet — drive a clean lap and it becomes your own.",
+    "detail": {
+      "car": "Ferrari 296 GT3",
+      "class": "gt3",
+      "sim": "iracing",
+      "track_id": "a track nobody has driven"
+    }
+  }
+}

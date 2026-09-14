@@ -1,0 +1,9 @@
+{
+  "error": {
+    "code": "invalid",
+    "message": "That stint names a session type this server does not know — the upload was dropped.",
+    "detail": {
+      "field": "session_type"
+    }
+  }
+}

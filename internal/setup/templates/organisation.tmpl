@@ -1,0 +1,16 @@
+{{define "content"}}<div class="card">
+    <h1>Organisation</h1>
+    <p class="muted">The name drivers see when their client connects to this server.</p>
+    <form method="post" action="/setup/organisation">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <label class="field">
+        <span class="lbl">Organisation name</span>
+        <input type="text" name="organisation" autofocus value="{{.Form.Organisation}}">
+        <span class="hint">Whatever your league or team is called. You can change it later in settings.</span>
+      </label>
+      <div class="actions">
+        <button class="btn" type="submit">Continue</button>
+        <a class="ghost" href="/setup/database">Back</a>
+      </div>
+    </form>
+  </div>{{end}}

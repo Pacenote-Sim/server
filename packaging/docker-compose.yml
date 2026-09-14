@@ -1,0 +1,93 @@
+# Pacenote community edition — the server and its database, together.
+#
+#   echo "POSTGRES_PASSWORD=$(openssl rand -base64 24)" > .env
+#   docker compose up
+#
+# Leave it attached for the first run: the setup token is printed to the log and
+# it works once. `docker compose logs server` shows it again if you lose the
+# window.
+#
+# Pin the image before you rely on this. PACENOTE_IMAGE defaults to :latest,
+# which is convenient for a first look and wrong for a server you care about:
+#
+#   echo "PACENOTE_IMAGE=ghcr.io/pacenote/pacenote-server:v0.1.0" >> .env
+
+name: pacenote
+
+services:
+  db:
+    # The major is pinned, because a PostgreSQL major upgrade rewrites the data
+    # directory and will not happen by restarting a container.
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: pacenote
+      POSTGRES_USER: pacenote
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env before starting}
+      # scram-sha-256 for anything that is not a local socket, so the password
+      # is never sent in a form a network observer can replay.
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+      POSTGRES_HOST_AUTH_METHOD: scram-sha-256
+    volumes:
+      - pacenote-db:/var/lib/postgresql/data
+    healthcheck:
+      # -U and -d because pg_isready defaults to the calling user and a database
+      # of the same name, which is not this one.
+      test: ["CMD-SHELL", "pg_isready -U pacenote -d pacenote"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      # initdb runs on the first start only, and it is the slow one.
+      start_period: 60s
+    # The database is reachable from the server and from nothing else. Publish a
+    # port here only while you are debugging, and take it away afterwards.
+    expose:
+      - "5432"
+    security_opt:
+      - no-new-privileges:true
+
+  server:
+    image: ${PACENOTE_IMAGE:-ghcr.io/pacenote/pacenote-server:latest}
+    restart: unless-stopped
+    depends_on:
+      db:
+        # The server treats an unreachable database as a hard stop rather than
+        # a wizard, so it must not start before the database answers.
+        condition: service_healthy
+    environment:
+      # sslmode=disable because this hop never leaves the compose network. If
+      # you point the server at a database somewhere else, use require.
+      PACENOTE_DATABASE_URL: postgres://pacenote:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env before starting}@db:5432/pacenote?sslmode=disable
+      PACENOTE_DATA_DIR: /data
+      PACENOTE_LISTEN: ":8080"
+      # Metrics and pprof stay on loopback inside the container, which is where
+      # the server insists they stay.
+      PACENOTE_METRICS_LISTEN: 127.0.0.1:9090
+      PACENOTE_LOG_LEVEL: info
+    ports:
+      - "${PACENOTE_PORT:-8080}:8080"
+    volumes:
+      # config.json and the certificate cache. Small, and it holds the key that
+      # opens your stored API key, so it is backed up separately from the
+      # database.
+      - pacenote-data:/data
+    # Nothing in the server writes outside its data directory.
+    read_only: true
+    # The uid baked into the image. It is here as well so that `docker compose
+    # config` shows what runs as what.
+    user: "65532:65532"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 30s
+    # No healthcheck on this service. The image has no shell and no curl to ask
+    # with, and the server has no health endpoint to ask yet — a check that
+    # cannot run is worse than none, because Docker would restart a healthy
+    # server on a loop. Watch the log instead.
+
+volumes:
+  pacenote-db:
+    name: pacenote-db
+  pacenote-data:
+    name: pacenote-data

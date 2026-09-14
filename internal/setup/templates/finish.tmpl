@@ -1,0 +1,20 @@
+{{define "content"}}<div class="card">
+    <h1>Ready</h1>
+    <p class="muted">This is everything that gets written. Nothing has been saved yet.</p>
+    <form method="post" action="/setup/finish">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <h2>What gets written</h2>
+      <table class="facts">
+        <tr><th>Organisation</th><td>{{.Form.Organisation}}</td></tr>
+        <tr><th>Administrator</th><td>{{.Form.Email}}</td></tr>
+        <tr><th>Public address</th><td class="num">{{.Form.BaseURL}}</td></tr>
+        <tr><th>Reached by</th><td>{{.Form.TLSDescription}}</td></tr>
+        <tr><th>Database</th><td>{{.Form.DatabaseSummary}}</td></tr>
+        <tr><th>Data directory</th><td class="num">{{.Form.DataDir}}</td></tr>
+      </table>
+      <div class="actions">
+        <button class="btn" type="submit">Finish setup</button>
+        <a class="ghost" href="/setup/address">Back</a>
+      </div>
+    </form>
+  </div>{{end}}

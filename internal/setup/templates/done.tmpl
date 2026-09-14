@@ -1,0 +1,11 @@
+{{define "content"}}<div class="card">
+    <h1>Setup is done</h1>
+    <p class="muted">The schema is built, the administrator exists and the server is switching to normal mode. Nothing needs restarting.</p>
+    <table class="facts">
+      <tr><th>Admin panel</th><td class="num">{{.Form.AdminURL}}</td></tr>
+      <tr><th>Sign in as</th><td>{{.Form.Email}}</td></tr>
+{{if .Form.PortChange}}      <tr><th>Ports</th><td>{{.Form.PortChange}}</td></tr>
+{{end}}    </table>
+    <p class="faint">The setup token is dead. Setup will not run again on this database — deleting the data directory does not bring the wizard back, because the administrator lives in PostgreSQL rather than on disk.</p>
+    <div class="actions"><a class="btn" href="{{.Form.AdminURL}}">Open the admin panel</a></div>
+  </div>{{end}}

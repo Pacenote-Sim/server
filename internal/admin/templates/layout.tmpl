@@ -1,0 +1,42 @@
+{{define "layout"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+{{if .Refresh}}<meta http-equiv="refresh" content="{{.Refresh}}">
+{{end}}<title>{{.Title}} — {{.Organisation}}</title>
+<link rel="stylesheet" href="/assets/app.css">
+</head>
+<body>
+<div class="wrap wide">
+  <header class="top">
+    <span class="name">{{.Organisation}}</span>
+    <span class="wm">admin</span>
+    <span class="spacer"></span>
+{{if .SignedIn}}    <span class="pill">{{.Email}}</span>
+    <form method="post" action="/admin/logout" style="display:inline">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <button class="ghost" type="submit">Sign out</button>
+    </form>
+{{end}}  </header>
+{{if .SignedIn}}  <nav class="sections">
+{{range .Nav}}{{if .Href}}    <a class="{{if .Current}}on{{end}}" href="{{.Href}}">{{.Name}}</a>
+{{else}}    <span class="later" title="not in this build">{{.Name}}</span>
+{{end}}{{end}}  </nav>
+{{end}}{{if .Error}}  <div class="notice bad">{{.Error}}</div>
+{{end}}{{if .Notice}}  <div class="notice good">{{.Notice}}</div>
+{{end}}  {{template "content" .}}
+  <footer class="foot">Pacenote {{.Version}} — community edition.</footer>
+</div>
+</body>
+</html>{{end}}
+
+{{define "moment"}}{{if .Known}}{{since .Ago}} ago<span class="faint"> — {{datetime .At}}</span>{{else}}<span class="faint">never</span>{{end}}{{end}}
+
+{{define "when"}}{{if .Known}}{{if .Future}}in {{since .Until}}{{else}}{{since .Ago}} ago{{end}}<span class="faint"> — {{datetime .At}}</span>{{else}}<span class="faint">never</span>{{end}}{{end}}
+
+{{define "pager"}}{{if or .Next .First}}<div class="pager">
+{{if .Next}}    <a class="ghost" href="{{.Next}}">Next page</a>
+{{end}}{{if .First}}    <a class="ghost" href="{{.First}}">Back to the first page</a>
+{{end}}  </div>
+{{end}}{{end}}

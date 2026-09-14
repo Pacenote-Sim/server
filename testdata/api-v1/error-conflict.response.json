@@ -1,0 +1,9 @@
+{
+  "error": {
+    "code": "conflict",
+    "message": "That idempotency key has already been used for a different request — nothing was stored, and this is a bug in the client rather than something to retry.",
+    "detail": {
+      "header": "Idempotency-Key"
+    }
+  }
+}

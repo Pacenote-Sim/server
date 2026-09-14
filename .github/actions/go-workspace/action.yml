@@ -1,0 +1,83 @@
+name: Go workspace
+description: >-
+  Check out the modules this one is built with beside it, install Go, and wire
+  them together with a go.work. It is how this module is built until protocol
+  and plugin are published: this repository imports both and requires neither in
+  its go.mod, so a checkout on its own does not build.
+
+inputs:
+  go-version:
+    description: The Go toolchain to install.
+    required: false
+    default: "1.26"
+  protocol-repository:
+    description: >-
+      owner/name of the protocol repository. Defaults to protocol under the same
+      owner as this one.
+    required: false
+    default: ""
+  protocol-ref:
+    description: The ref of the protocol repository to build against.
+    required: false
+    default: main
+  plugin-repository:
+    description: >-
+      owner/name of the plugin interface repository. Defaults to plugin under
+      the same owner as this one.
+    required: false
+    default: ""
+  plugin-ref:
+    description: The ref of the plugin repository to build against.
+    required: false
+    default: main
+  protocol-token:
+    description: >-
+      A token that can read the protocol and plugin repositories. The default
+      job token cannot reach another repository, so private ones need a PAT
+      passed in from a secret.
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    # The other modules first, so setup-go's cache key can read every go.sum.
+    - name: Check out github.com/pacenote-sim/protocol
+      uses: actions/checkout@v7
+      with:
+        repository: ${{ inputs.protocol-repository || format('{0}/protocol', github.repository_owner) }}
+        ref: ${{ inputs.protocol-ref }}
+        path: protocol
+        token: ${{ inputs.protocol-token || github.token }}
+        persist-credentials: false
+
+    # The plugin interface. This repository runs plugins, so it imports the
+    # contract they are built against — leaving it out builds nothing.
+    - name: Check out github.com/pacenote-sim/plugin
+      uses: actions/checkout@v7
+      with:
+        repository: ${{ inputs.plugin-repository || format('{0}/plugin', github.repository_owner) }}
+        ref: ${{ inputs.plugin-ref }}
+        path: plugin
+        token: ${{ inputs.protocol-token || github.token }}
+        persist-credentials: false
+
+    - uses: actions/setup-go@v7
+      with:
+        go-version: ${{ inputs.go-version }}
+        check-latest: true
+        cache-dependency-path: |
+          server/go.sum
+          protocol/go.sum
+          plugin/go.sum
+
+    # The workspace is written here rather than committed: it names local
+    # directories, so it is true of a checkout and of nothing else.
+    - name: Wire the workspace
+      shell: bash
+      working-directory: ${{ github.workspace }}
+      run: |
+        go work init ./protocol ./plugin ./server
+        go work sync
+        echo "go.work:"
+        cat go.work

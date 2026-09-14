@@ -1,0 +1,16 @@
+{
+  "driver": {
+    "id": "ana-ruiz",
+    "name": "Ana Ruiz",
+    "slug": "ana-ruiz",
+    "class": "gt3"
+  },
+  "team": null,
+  "features": [
+    "telemetry",
+    "reference",
+    "live",
+    "tts",
+    "field"
+  ]
+}

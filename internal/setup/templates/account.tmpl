@@ -1,0 +1,24 @@
+{{define "content"}}<div class="card">
+    <h1>Administrator account</h1>
+    <p class="muted">This is the only account that reaches the admin panel. Drivers never sign in with a password — their machines are paired instead, and you approve each one here while signed in.</p>
+    <form method="post" action="/setup/account">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <label class="field">
+        <span class="lbl">Email address</span>
+        <input type="email" name="email" autocomplete="username" autofocus value="{{.Form.Email}}">
+      </label>
+      <label class="field">
+        <span class="lbl">Password</span>
+        <input type="password" name="password" autocomplete="new-password">
+        <span class="hint">At least {{.Form.MinPasswordLen}} characters. A phrase you can remember beats something short and clever.</span>
+      </label>
+      <label class="field">
+        <span class="lbl">Password again</span>
+        <input type="password" name="password2" autocomplete="new-password">
+      </label>
+      <div class="actions">
+        <button class="btn" type="submit">Continue</button>
+        <a class="ghost" href="/setup/organisation">Back</a>
+      </div>
+    </form>
+  </div>{{end}}

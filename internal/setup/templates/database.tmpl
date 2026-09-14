@@ -1,0 +1,13 @@
+{{define "content"}}<div class="card">
+    <h1>Database</h1>
+    <p class="muted">Everything is kept in PostgreSQL — drivers, stints, laps, traces, settings. Point this at a database you have already created and it builds the schema itself.</p>
+    <form method="post" action="/setup/database">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <label class="field">
+        <span class="lbl">Connection string</span>
+        <input class="mono" type="text" name="database_url" autocomplete="off" autofocus spellcheck="false" value="{{.Form.DatabaseURL}}">
+        <span class="hint">postgres://user:password@host:5432/pacenote — the user needs permission to create tables, and the server has to be PostgreSQL {{.Form.MinVersion}} or newer.</span>
+      </label>
+      <div class="actions"><button class="btn" type="submit">Test and continue</button></div>
+    </form>
+  </div>{{end}}

@@ -1,0 +1,99 @@
+{{define "content"}}<div class="card">
+    <h1>{{.Form.Row.Name}}</h1>
+    <p class="muted">{{.Form.Row.Description}}</p>
+    <table class="facts">
+      <tr><th>State</th><td><span class="pill {{.Form.Row.Tone}}">{{.Form.Row.State}}</span>{{if not .Form.Row.Enabled}} <span class="faint">turned off</span>{{end}}</td></tr>
+      <tr><th>Version</th><td>{{.Form.Row.Version}} <span class="faint">by {{.Form.Row.Author}}</span></td></tr>
+{{if .Form.Row.WrongVersion}}      <tr><th>Interface</th><td>Built for {{.Form.Row.BuiltFor}}, and this server speaks {{.Form.Row.HostSpeaks}}. It will not start until one of them changes.</td></tr>
+{{end}}{{if not .Form.Row.Installed}}      <tr><th>Files</th><td>No longer in the plugin directory. What it stored is still here, so putting the folder back brings it up where it left off.</td></tr>
+{{end}}{{if .Form.Row.Restarts}}      <tr><th>Restarts</th><td class="num">{{.Form.Row.Restarts}}<span class="faint"> since it last ran cleanly</span></td></tr>
+{{end}}{{if .Form.Row.LastError}}      <tr><th>Last error</th><td>{{.Form.Row.LastError}}</td></tr>
+{{end}}    </table>
+  </div>
+
+  <div class="card">
+    <h2>What it does</h2>
+{{if .Form.Row.Declares}}    <ul class="plain">
+{{range .Form.Row.Declares}}      <li>{{.}}</li>
+{{end}}    </ul>
+    <p class="muted">A plugin is not sandboxed — it runs with this server's privileges, and what it declares is what it says it wants rather than a limit on what it can do. Installing one is trusting whoever wrote it.</p>
+{{else}}    <p class="muted">It declares nothing.</p>
+{{end}}  </div>
+
+{{if .Form.Fields}}  <div class="card">
+    <h2>Settings</h2>
+    <form method="post" action="/admin/plugins/{{.Form.Row.Name}}/settings">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+{{range .Form.Fields}}      <label class="field">
+        <span class="lbl">{{.Label}}{{if .Required}} <span class="faint">required</span>{{end}}</span>
+{{if .IsSecret}}        <input type="password" name="{{.Name}}" autocomplete="off" placeholder="{{if .Tail}}stored, ending {{.Tail}}{{else if .Stored}}stored, but unreadable{{else}}{{.Placeholder}}{{end}}">
+{{if and .Stored (not .Tail)}}        <span class="hint">Something is stored here, but it cannot be opened with this server's data key — the key was regenerated, or the data directory was replaced. Enter it again.</span>
+{{end}}{{if .Stored}}        <label class="check"><input type="checkbox" name="remove_{{.Name}}" value="1"> <span>Remove what is stored</span></label>
+{{end}}{{else if eq .Kind "bool"}}        <label class="check"><input type="checkbox" name="{{.Name}}" value="true"{{if .Checked}} checked{{end}}> <span>{{.Label}}</span></label>
+{{else if eq .Kind "choice"}}        <select name="{{.Name}}">
+{{range .Choices}}          <option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}{{if .Note}} — {{.Note}}{{end}}</option>
+{{end}}        </select>
+{{else if eq .Kind "number"}}        <input type="number" name="{{.Name}}" value="{{.Value}}" placeholder="{{.Placeholder}}">
+{{else}}        <input type="text" name="{{.Name}}" value="{{.Value}}" placeholder="{{.Placeholder}}">
+{{end}}{{if .Help}}        <span class="hint">{{.Help}}</span>
+{{end}}      </label>
+{{end}}      <div class="actions">
+        <button class="btn" type="submit">Save</button>
+        <a class="ghost" href="/admin/plugins">Back to plugins</a>
+      </div>
+    </form>
+{{if .Form.Row.Enabled}}    <p class="muted">Saving restarts this plugin, so it picks up what you changed.</p>
+{{end}}  </div>
+{{else}}  <div class="card">
+    <h2>Settings</h2>
+    <p class="muted">This plugin asks for nothing to be configured.{{if not .Form.Row.Installed}} It may also have more to ask for than is shown — a plugin declares that when it starts, and this one is not running.{{end}}</p>
+  </div>
+{{end}}
+  <div class="card">
+    <h2>What it may spend</h2>
+    <p class="muted">This plugin runs on your account and your bill. The cap is yours and this server enforces it — the plugin is not told what it is and cannot go past it. When it is reached the plugin is quietly not called: a driver hears the client's own cues rather than nothing, and nobody is told to check a settings page mid-session.</p>
+    <form method="post" action="/admin/plugins/{{.Form.Row.Name}}/cap">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <label class="field">
+        <span class="lbl">Daily cap</span>
+        <input type="number" name="daily_token_cap" class="mono" value="{{.Form.Spend.Cap}}" min="0" step="1000">
+        <span class="hint">Tokens a day, counted in this server's own time zone. Set it to 0 for no cap, which means no ceiling on what a mistake costs.</span>
+      </label>
+      <div class="actions"><button class="btn" type="submit">Save the cap</button></div>
+    </form>
+{{if .Form.Spend.OverCap}}    <p class="muted"><span class="pill bad">at the cap</span> This plugin has spent its allowance for today and is not being called. It starts again at midnight.</p>
+{{end}}    <table class="facts">
+      <tr><th>Today</th><td class="num">{{count .Form.Spend.Today.Total}}<span class="faint"> tokens over {{count .Form.Spend.Today.Calls}} calls — {{count .Form.Spend.Today.Input}} in, {{count .Form.Spend.Today.Output}} out</span></td></tr>
+      <tr><th>This month</th><td class="num">{{count .Form.Spend.Month.Total}}<span class="faint"> tokens over {{count .Form.Spend.Month.Calls}} calls</span></td></tr>
+      <tr><th>Cap</th><td>{{if .Form.Spend.Capped}}<span class="num">{{count .Form.Spend.Cap}}</span> a day{{else}}<span class="faint">no cap</span>{{end}}</td></tr>
+    </table>
+  </div>
+
+{{if .Form.Output}}  <div class="card">
+    <h2>What it printed</h2>
+    <p class="muted">The last of what this plugin wrote while it was running. Credentials are removed before any of it is stored.</p>
+    <pre class="out">{{.Form.Output}}</pre>
+  </div>
+{{end}}
+  <div class="card">
+    <h2>Run</h2>
+    <form method="post" action="/admin/plugins/{{.Form.Row.Name}}/action" class="row tight">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+{{if .Form.Row.Enabled}}      <button class="ghost" type="submit" name="action" value="restart">Restart</button>
+      <button class="ghost" type="submit" name="action" value="disable">Turn off</button>
+      <span class="faint">Turning it off stops the program and keeps everything it stored.</span>
+{{else}}      <button class="btn" type="submit" name="action" value="enable">Turn on</button>
+      <span class="faint">Starts the program again with what it already had.</span>
+{{end}}    </form>
+  </div>
+
+  <div class="card danger">
+    <h2>Remove {{.Form.Row.Name}}</h2>
+    <p class="muted">Stops it, forgets what you configured{{if .Form.Database}}, and drops the tables it kept — every row this plugin wrote goes with it{{end}}. Its files stay in the plugin directory, so this server will find it again the next time it looks unless you delete the folder too.</p>
+    <p class="muted">There is no undo.</p>
+    <form method="post" action="/admin/plugins/{{.Form.Row.Name}}/action" class="row tight">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <label class="check"><input type="checkbox" name="confirm" value="1" required> <span>I understand this cannot be undone</span></label>
+      <button class="btn warn" type="submit" name="action" value="remove">Remove</button>
+    </form>
+  </div>{{end}}
