@@ -70,6 +70,11 @@ RUN install -d -o 65532 -g 65532 -m 0700 /out/data
 
 FROM ${RUNTIME_IMAGE}
 
+# Re-declared inside the stage. An ARG from before the first FROM is in scope
+# for the FROM line itself and nowhere else, so without this the base.name label
+# below expands to an empty string — a label that says it records the base image
+# and records nothing.
+ARG RUNTIME_IMAGE
 ARG VERSION=0.0.0-dev
 LABEL org.opencontainers.image.title="pacenote-server" \
       org.opencontainers.image.description="Pacenote community edition telemetry server" \

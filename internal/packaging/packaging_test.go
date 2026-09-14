@@ -347,6 +347,46 @@ func TestDockerfileIgnoresWhatMustNotReachTheImage(t *testing.T) {
 	}
 }
 
+// The other half of the same file: what it must not ignore.
+//
+// **/name matches at any depth, so a rule meant for a built binary at the top
+// of the repository also matches a directory of that name further down. That is
+// not hypothetical — **/pacenote-server was written for the binary beside the
+// Makefile and silently excluded server/cmd/pacenote-server, which is the
+// package the image is built from. The image build failed on a path that is
+// plainly in the checkout, and nothing else in this suite noticed.
+func TestDockerfileDoesNotIgnoreWhatItBuilds(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	raw := read(t, "Dockerfile.dockerignore")
+
+	// Paths the Dockerfile copies and the build needs, relative to the context.
+	needed := []string{
+		"server/cmd/pacenote-server",
+		"server/internal",
+		"protocol/wire",
+		"plugin/examples",
+	}
+
+	for _, line := range strings.Split(raw, "\n") {
+		pattern := strings.TrimSpace(line)
+		if pattern == "" || strings.HasPrefix(pattern, "#") {
+			continue
+		}
+		name, found := strings.CutPrefix(pattern, "**/")
+		if !found || strings.ContainsAny(name, "*?[") {
+			continue
+		}
+		for _, want := range needed {
+			for _, segment := range strings.Split(want, "/") {
+				r.NotEqualf(name, segment,
+					"%q matches at any depth, so it also excludes %s — anchor it as */%s",
+					pattern, want, name)
+			}
+		}
+	}
+}
+
 // --- the words an operator reads -------------------------------------------
 
 func TestReadmeAnswersTheQuestionsInTheOrderTheyAreAsked(t *testing.T) {

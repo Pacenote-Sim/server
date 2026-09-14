@@ -9,11 +9,16 @@
 **/.github
 
 # Build outputs, which would only invalidate the cache.
+#
+# The binary patterns are anchored one level down — */pacenote-server, matching
+# <repo>/pacenote-server — and not **/pacenote-server. The ** form also matches
+# server/cmd/pacenote-server, which is a directory and is the package this image
+# is built from: the build then fails with "directory not found" on a path that
+# is plainly there in the checkout.
 **/dist
 **/bin
-**/pacenote-server
-**/pacenote-server.exe
-**/*.exe
+*/pacenote-server
+*/pacenote-server.exe
 **/*.test
 **/*.out
 **/*.prof
