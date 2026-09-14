@@ -92,9 +92,15 @@ sboms:
 
 changelog:
   # The release notes come from CHANGELOG.md, passed in with --release-notes by
-  # the release workflow. A generated commit list underneath it would say the
-  # same thing worse.
-  disable: true
+  # the release workflow.
+  #
+  # This stays enabled, and that is the point. --release-notes is read by the
+  # changelog step, and it replaces generation rather than adding to it — so
+  # disabling the step to avoid a generated commit list also throws away the
+  # notes file, and the release is published with an empty body. v0.1.0 went out
+  # that way. With the step enabled and the flag passed, the file is the body
+  # and nothing is generated.
+  disable: false
 
 release:
   draft: false

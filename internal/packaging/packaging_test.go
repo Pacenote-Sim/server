@@ -355,6 +355,31 @@ func TestDockerfileIgnoresWhatMustNotReachTheImage(t *testing.T) {
 // Makefile and silently excluded server/cmd/pacenote-server, which is the
 // package the image is built from. The image build failed on a path that is
 // plainly in the checkout, and nothing else in this suite noticed.
+// The release notes have to survive the path from CHANGELOG.md to the release.
+//
+// Two files have to agree for that: the workflow passes --release-notes, and
+// GoReleaser's changelog step is what reads it. The flag replaces generation
+// rather than adding to it, so disabling the step to avoid a generated commit
+// list silently drops the notes and the release is published with an empty
+// body. That is what happened to v0.1.0, and nothing here noticed.
+func TestTheReleaseNotesReachTheRelease(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	workflow := read(t, ".github/workflows/release.yml")
+	r.Contains(workflow, "--release-notes=", "the release does not pass the notes to GoReleaser")
+	r.Contains(workflow, "release-notes.sh", "nothing takes the notes out of CHANGELOG.md")
+
+	var cfg struct {
+		Changelog struct {
+			Disable bool `yaml:"disable"`
+		} `yaml:"changelog"`
+	}
+	require.NoError(t, yaml.Unmarshal([]byte(read(t, ".goreleaser.yml")), &cfg))
+	r.False(cfg.Changelog.Disable,
+		"the changelog step is what reads --release-notes; disabled, the release body is empty")
+}
+
 func TestDockerfileDoesNotIgnoreWhatItBuilds(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
