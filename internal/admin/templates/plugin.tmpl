@@ -20,7 +20,18 @@
 {{else}}    <p class="muted">It declares nothing.</p>
 {{end}}  </div>
 
-{{if .Form.Fields}}  <div class="card">
+{{if .Form.Row.Pages}}  <div class="card">
+    <h2>Its pages</h2>
+    <p class="muted">This plugin serves these on this server. Who reaches each one is what it declared, and what this server enforces.</p>
+    <table class="rows">
+{{range .Form.Row.Pages}}      <tr>
+        <th>{{if .Yours}}<a href="{{.Href}}">{{.Path}}</a>{{else}}<span class="mono">{{.Path}}</span>{{end}}</th>
+        <td>{{.Reach}}{{if .Reason}} <span class="faint">— {{.Reason}}</span>{{end}}</td>
+      </tr>
+{{end}}    </table>
+  </div>
+
+{{end}}{{if .Form.Fields}}  <div class="card">
     <h2>Settings</h2>
     <form method="post" action="/admin/plugins/{{.Form.Row.Name}}/settings">
       <input type="hidden" name="csrf" value="{{.CSRF}}">

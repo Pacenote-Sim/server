@@ -26,7 +26,7 @@
 {{end}}{{if .Restarts}}          <div class="faint">restarted {{.Restarts}} time{{if ne .Restarts 1}}s{{end}}</div>
 {{end}}{{if .LastError}}          <div class="faint">{{.LastError}}</div>
 {{end}}        </td>
-        <td>
+        <td class="declares">
 {{range .Declares}}          <div class="faint">{{.}}</div>
 {{end}}        </td>
         <td>

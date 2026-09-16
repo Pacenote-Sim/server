@@ -55,6 +55,12 @@ type instance struct {
 	client   *goplugin.Client
 	impl     plugin.Plugin
 	declared []plugin.Setting
+	// valueRules is declared with the requirement lifted off every secret,
+	// because a secret is required of the sealed map rather than of the plain
+	// one. It is derived once here rather than per call: configure runs on
+	// every lap, every request and every page, and this changes only when a
+	// plugin starts and says what it needs.
+	valueRules []plugin.Setting
 }
 
 // instanceHost is the part of the host an instance uses. It is a named type
@@ -354,6 +360,7 @@ func (i *instance) start() error {
 	i.client = client
 	i.impl = impl
 	i.declared = declared
+	i.valueRules = valueRulesFor(declared)
 	i.mu.Unlock()
 
 	i.saveDeclared(declared)
@@ -364,6 +371,22 @@ func (i *instance) start() error {
 // form for a plugin that is not running. That matters most for the plugin that
 // will not start until a credential is filled in: without it the operator would
 // have no way to fill it in.
+// valueRulesFor is declared with the requirement lifted off every secret.
+//
+// A secret is never in the plain settings map — it is sealed, and lives in the
+// other one — so requiring it of the plain map is a check that can never pass.
+// The requirement is real and is enforced against the sealed map instead.
+func valueRulesFor(declared []plugin.Setting) []plugin.Setting {
+	out := make([]plugin.Setting, len(declared))
+	copy(out, declared)
+	for i := range out {
+		if out[i].Kind == plugin.KindSecret {
+			out[i].Required = false
+		}
+	}
+	return out
+}
+
 func (i *instance) saveDeclared(declared []plugin.Setting) {
 	raw, err := json.Marshal(declared)
 	if err != nil {
@@ -545,9 +568,15 @@ func (i *instance) live() (plugin.Plugin, bool) {
 // of the call. Nothing about them is cached on the instance: an operator who
 // changes a key in the panel changes it for the next call, and a plugin that
 // has been stopped is holding nothing.
+//
+// It returns [plugin.ErrNotConfigured] alongside usable values when a required
+// setting is empty, rather than instead of them. A caller that must refuse an
+// unconfigured plugin checks the error; one that serves a page uses the values
+// and lets the plugin decide.
 func (i *instance) configure(ctx context.Context) (plugin.Values, plugin.Secrets, error) {
 	i.mu.RLock()
 	declared := i.declared
+	valueRules := i.valueRules
 	name := i.manifest.Name
 	i.mu.RUnlock()
 
@@ -566,9 +595,28 @@ func (i *instance) configure(ctx context.Context) (plugin.Values, plugin.Secrets
 		stored[row.Name] = row.Value
 	}
 
-	values, err := plugin.ValidateValues(declared, stored)
-	if err != nil {
+	// A plugin that is not finished being set up still gets what is set.
+	//
+	// The error is returned either way, and Answer and Notify still refuse on
+	// it — a cue cannot be written without a key. But serving a page is a
+	// weaker promise, and the caller that tolerates this needs the settings
+	// that are present: the page an operator uses to finish the setup is
+	// usually one that has to render what is already there.
+	values, err := plugin.ValidateValues(valueRules, stored)
+	notConfigured := errors.Is(err, plugin.ErrNotConfigured)
+	if err != nil && !notConfigured {
 		return nil, nil, err
+	}
+	if notConfigured {
+		optional := make([]plugin.Setting, len(valueRules))
+		copy(optional, valueRules)
+		for k := range optional {
+			optional[k].Required = false
+		}
+		// It validated a moment ago bar the required check, so this cannot
+		// fail for a new reason; if it somehow does, the caller has the first
+		// error and no values, which is what it had before.
+		values, _ = plugin.ValidateValues(optional, stored)
 	}
 
 	secrets := make(plugin.Secrets)
@@ -580,18 +628,25 @@ func (i *instance) configure(ctx context.Context) (plugin.Values, plugin.Secrets
 		}
 		raw, ok := sealed[s.Name]
 		if !ok || len(raw) == 0 {
-			if s.Required {
-				return nil, nil, fmt.Errorf("%w: %s has to be filled in", plugin.ErrNotConfigured, s.Label)
+			// Recorded rather than returned, so that the settings resolved
+			// above survive. A caller that must refuse checks the error; the
+			// one that serves a page needs what is set, and a page rendering
+			// nothing is how an operator loses what they had already entered.
+			if s.Required && err == nil {
+				err = fmt.Errorf("%w: %s has to be filled in", plugin.ErrNotConfigured, s.Label)
 			}
 			continue
 		}
-		opened, err := key.Open(raw)
-		if err != nil {
+		opened, openErr := key.Open(raw)
+		if openErr != nil {
 			// The data directory was lost while the database survived, or the
 			// operator regenerated the data key. The feature is off until they
 			// enter the credential again, and saying so is better than a call
 			// that fails at the vendor.
-			return nil, nil, fmt.Errorf("%w: %s is stored but cannot be read — enter it again", plugin.ErrNotConfigured, s.Label)
+			if err == nil {
+				err = fmt.Errorf("%w: %s is stored but cannot be read — enter it again", plugin.ErrNotConfigured, s.Label)
+			}
+			continue
 		}
 		secrets[s.Name] = plugin.NewSecret(opened)
 	}
@@ -599,7 +654,7 @@ func (i *instance) configure(ctx context.Context) (plugin.Values, plugin.Secrets
 	// Everything the plugin is about to be lent is learned by the scrubber
 	// first, so that whatever it says next cannot carry one back.
 	i.scrub.learn(secrets)
-	return values, secrets, nil
+	return values, secrets, err
 }
 
 // meter records what a call cost and nothing else. The decision about whether

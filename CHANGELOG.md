@@ -6,7 +6,22 @@ the patch when something was wrong.
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **A plugin that needs a credential could not be used.** A required key was checked against the
+  plain settings, where a credential never is, so it was refused for not having one while holding it.
+- **A plugin could not serve its pages until it was configured,** including the page you configure it
+  on. It is now told what is set and decides for itself.
+
+### Added
+
+- **A plugin's pages are linked from its page in the panel,** under *Its pages*.
+- **`scripts/demo.sql`** writes demo drivers, stints and laps, for a server nobody has driven on yet.
+  Not in the release package.
+
+### Changed
+
+- Tables that list rows have room between their columns.
 
 ## [0.1.0] — 2026-09-14
 

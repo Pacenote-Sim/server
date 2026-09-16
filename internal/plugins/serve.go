@@ -108,8 +108,20 @@ func (i *instance) serve(ctx context.Context, r plugin.HTTPRequest) (plugin.HTTP
 		return plugin.HTTPResponse{}, fmt.Errorf("%w: %s", ErrNoRoute, i.name())
 	}
 
+	// A page is served whether or not the plugin is finished being set up.
+	//
+	// Answering a request and serving a page are not the same promise. A plugin
+	// that has not been configured cannot be asked for a cue — there is no key
+	// to make one with — but its pages are frequently how an operator gets it
+	// configured in the first place, and a webhook has to keep answering a
+	// provider that does not know or care. Refusing here made both impossible:
+	// every address a plugin served answered 502 until every required setting
+	// was filled in, including the address that existed to fill them in.
+	//
+	// So the plugin is told what is set and left to decide. It already has to:
+	// it receives the settings and can see what is missing.
 	values, secrets, err := i.configure(ctx)
-	if err != nil {
+	if err != nil && !errors.Is(err, plugin.ErrNotConfigured) {
 		return plugin.HTTPResponse{}, err
 	}
 	r.Settings = values

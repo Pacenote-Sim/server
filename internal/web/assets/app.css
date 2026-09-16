@@ -163,6 +163,28 @@ table.facts td.num { font-family: var(--mono); }
    is waiting, so every column is as wide as it needs to be and the first one is
    not a label. */
 table.facts.rows th { width: auto; }
+
+/* A row here is not one line. A plugin's cell carries its name, what it is, its
+   version and author; the next carries a state and every reason it is in that
+   state; the next everything it declares. Four columns of stacked 12px text with
+   no gutter between them and no space between the lines reads as one block of
+   grey, which is what it looked like.
+
+   The gutter is on the right so the last column still ends at the card's edge,
+   and the rule between rows stays unbroken. */
+table.facts.rows th, table.facts.rows td { padding: 14px 20px 14px 0; }
+table.facts.rows th:last-child, table.facts.rows td:last-child { padding-right: 0; }
+
+/* Stacked lines inside one cell. The first sits under whatever names the row,
+   the rest under each other. */
+table.facts.rows td > .faint { margin-top: 5px; line-height: 1.45; }
+table.facts.rows td > a + .faint { margin-top: 7px; }
+table.facts.rows td > .pill + .faint { margin-top: 8px; }
+
+/* What a plugin declares is prose, one sentence a line, and prose needs a
+   measure. Left to itself this column takes whatever the others do not and the
+   sentences run too long to scan. */
+table.facts.rows td.declares { max-width: 32rem; }
 table.facts.rows td.code {
   font-family: var(--mono); font-size: 16px; letter-spacing: 2px; font-weight: 600;
 }

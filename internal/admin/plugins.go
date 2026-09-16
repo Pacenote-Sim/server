@@ -14,6 +14,7 @@ import (
 	"github.com/pacenote-sim/server/internal/db"
 	"github.com/pacenote-sim/server/internal/httpx"
 	"github.com/pacenote-sim/server/internal/plugins"
+	"github.com/pacenote-sim/server/internal/pluginweb"
 )
 
 // PluginsPath is where the plugins page is mounted.
@@ -51,6 +52,13 @@ type pluginRow struct {
 	// Declares is the capability list, one sentence each, from the plugin
 	// module so that every host words it the same way.
 	Declares []string
+	// Pages are the addresses this plugin serves, as links.
+	//
+	// The capability list says a plugin serves them; this is how an operator
+	// gets there. Without it the address is knowable only by reading the
+	// manifest, which is not a thing an operator should have to do to find the
+	// page a plugin installed.
+	Pages []pluginPage
 	// NeedsConfiguring is a plugin with a required setting nobody has filled
 	// in. It is the single most common reason a plugin is installed and does
 	// nothing, so it is called out rather than left to the operator to notice.
@@ -597,6 +605,51 @@ func (p *Panel) secretTail(sealed []byte) string {
 }
 
 // pluginRowOf is one status as a page shows it.
+// pluginPage is one address a plugin serves.
+type pluginPage struct {
+	// Href is where it is, and Path what the plugin calls it.
+	Href string
+	Path string
+	// Reach is who may open it, in words.
+	Reach string
+	// Yours reports that an administrator can follow this link. A driver's
+	// page is listed so the operator knows it exists and can say where it is,
+	// but following it as an administrator would only produce a refusal.
+	Yours bool
+	// Reason is why a plugin checks a caller itself, when it does.
+	Reason string
+}
+
+// pagesOf is the plugin's declared routes as links an operator can follow.
+func pagesOf(s plugins.Status) []pluginPage {
+	if s.Capabilities.HTTP == nil {
+		return nil
+	}
+	out := make([]pluginPage, 0, len(s.Capabilities.HTTP.Routes))
+	for _, route := range s.Capabilities.HTTP.Routes {
+		page := pluginPage{
+			Href:   pluginweb.Prefix + url.PathEscape(s.Name) + route.Path,
+			Path:   route.Path,
+			Reason: route.Reason,
+		}
+		switch route.Access {
+		case plugin.AccessPublic:
+			page.Reach, page.Yours = "anyone", true
+		case plugin.AccessDriver:
+			page.Reach = "a signed-in driver"
+		case plugin.AccessAdmin:
+			page.Reach, page.Yours = "you", true
+		case plugin.AccessCustom:
+			page.Reach, page.Yours = "whoever the plugin decides", true
+		default:
+			page.Reach = "nobody, because this server does not understand who it is for"
+		}
+		out = append(out, page)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
+	return out
+}
+
 func pluginRowOf(s plugins.Status, hostVersion int) pluginRow {
 	row := pluginRow{
 		Name:         s.Name,
@@ -608,6 +661,7 @@ func pluginRowOf(s plugins.Status, hostVersion int) pluginRow {
 		Enabled:      s.Enabled,
 		Installed:    s.Installed,
 		Declares:     s.Capabilities.Describe(),
+		Pages:        pagesOf(s),
 		LastError:    s.LastError,
 		Restarts:     s.Restarts,
 		BuiltFor:     s.InterfaceVersion,
