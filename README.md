@@ -159,7 +159,7 @@ No ORM, no query builder. Every query is reviewable as SQL.
 Push a tag:
 
 ```
-git tag v0.1.0 && git push origin v0.1.0
+git tag vX.Y.Z && git push origin vX.Y.Z
 ```
 
 `.github/workflows/release.yml` takes the notes from that version's `CHANGELOG.md` section — and
@@ -181,10 +181,12 @@ Dockerfile against it, so the package cannot drift from what the operator README
 
 ### The workspace in continuous integration
 
-This module imports `github.com/pacenote-sim/protocol` and `github.com/pacenote-sim/plugin`, which
-are separate repositories and are not published. Every workflow checks this repository out into
-`server/`, the other two beside it, and writes a `go.work` over all three —
-`.github/actions/go-workspace` does that once for all of them.
+This module requires `github.com/pacenote-sim/protocol` and `github.com/pacenote-sim/plugin` by
+version, like any module. Every workflow still checks this repository out into `server/`, the other
+two beside it, and writes a `go.work` over all three — `.github/actions/go-workspace` does that once
+for all of them — so that a change in one repository is tested with the others *before* it is
+tagged, and so the container image can be built from the three sources together. A checkout of this
+repository on its own builds too, against the tagged versions in `go.mod`.
 
 | Name | What it is |
 |---|---|

@@ -1,9 +1,11 @@
 name: Go workspace
 description: >-
   Check out the modules this one is built with beside it, install Go, and wire
-  them together with a go.work. It is how this module is built until protocol
-  and plugin are published: this repository imports both and requires neither in
-  its go.mod, so a checkout on its own does not build.
+  them together with a go.work. This repository requires protocol and plugin by
+  version, so a checkout on its own builds against the tagged releases; the
+  workspace replaces those with the checkouts beside it, so a change in one
+  repository is tested with the others before it is tagged, and the container
+  image can be built from the three sources together.
 
 inputs:
   go-version:
