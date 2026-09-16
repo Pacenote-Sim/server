@@ -5,7 +5,6 @@ package api_test
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"os"
 	"testing"
@@ -46,12 +45,11 @@ func TestGoldenFixtures(t *testing.T) {
 	ctx := context.Background()
 
 	// A fully configured installation, so the documents show every field a
-	// client can meet rather than the subset a bare server has. That now
-	// includes a plugin that speaks, because the voice is a plugin's and a
-	// server with none does not advertise the feature.
+	// client can meet rather than the subset a bare server has. No plugin is
+	// installed: a voice is served on a plugin's own route now, and nothing
+	// about it appears in these documents.
 	h := newHarness(t, harnessOptions{
 		features: withFeatures(wire.FeatureField),
-		plugins:  &speaker{audio: []byte("RIFF....WAVEfmt "), audioType: "audio/wav"},
 		settings: func(s *config.Settings) {
 			s.Logo = "https://pacenote.example.com/logo.png"
 			s.Accent = "#C6F24B"
@@ -160,12 +158,6 @@ func TestGoldenFixtures(t *testing.T) {
 			key: "fixture-field", body: field,
 		}), nil)
 
-	tts := wire.TTSRequest{Text: "Turn 4, more entry speed.", Lang: "en"}
-	g.write("tts.request", tts)
-	require.Equal(t, http.StatusOK,
-		h.do(request{method: http.MethodPost, path: "/api/v1/tts", key: "fixture-tts", body: tts}).status,
-		"POST /tts answers audio and has no response document to pin")
-
 	h.captureErrorFixtures(t, g)
 }
 
@@ -178,12 +170,10 @@ func (h *harness) captureErrorFixtures(t *testing.T, g *fixtureWriter) {
 	g.captureError("error-unauthorized.response", wire.CodeUnauthorized,
 		h.do(request{method: http.MethodGet, path: "/api/v1/me", noAuth: true}))
 
-	// A plain community installation, with a voice service that will not
-	// answer: it is the one that produces both the forbidden and the
-	// server_error envelopes for real rather than by construction.
 	// A server with no plugins, which is what a fresh installation is: it
 	// records laps and compares them, and the features that need something
-	// running are absent rather than broken.
+	// running are absent rather than broken. It produces the forbidden
+	// envelope for real rather than by construction.
 	plain := newHarness(t, harnessOptions{})
 
 	g.captureError("error-forbidden.response", wire.CodeForbidden,
@@ -231,16 +221,14 @@ func (h *harness) captureErrorFixtures(t *testing.T, g *fixtureWriter) {
 	r.Equal(http.StatusTooManyRequests, limited.status)
 	g.captureError("error-rate_limited.response", wire.CodeRateLimited, limited)
 
-	// A voice plugin that will not answer, which is the shape of every server
-	// error a driver actually meets.
-	broken := newHarness(t, harnessOptions{
-		plugins: &speaker{err: errors.New("the vendor refused")},
-	})
+	// A database that stopped, which is the shape of every server error a
+	// driver actually meets now that nothing here calls a vendor. The harness
+	// pairs its device first, so the request is a real one from a real
+	// machine meeting a store that has gone away.
+	broken := newHarness(t, harnessOptions{})
+	broken.store.Close()
 	g.captureError("error-server_error.response", wire.CodeServerError,
-		broken.do(request{
-			method: http.MethodPost, path: "/api/v1/tts", key: "fixture-server-error",
-			body: wire.TTSRequest{Text: "Turn 4, more entry speed.", Lang: "en"},
-		}))
+		broken.do(request{method: http.MethodGet, path: "/api/v1/me"}))
 }
 
 // fixtureWriter turns a response into a committed document, or asserts that the

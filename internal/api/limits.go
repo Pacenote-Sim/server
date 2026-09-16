@@ -25,8 +25,6 @@ const (
 	ClassField
 	// ClassSummary is PUT /stints/{id}/summary.
 	ClassSummary
-	// ClassTTS is POST /tts.
-	ClassTTS
 	// ClassPair is POST /pair/start and POST /pair/poll, which are
 	// unauthenticated and so are limited by address instead of by device.
 	ClassPair
@@ -45,8 +43,6 @@ const (
 	ReadBurst       = 30.0
 	WritesPerSecond = 5.0
 	WriteBurst      = 60.0
-	TTSPerSecond    = 2.0
-	TTSBurst        = 10.0
 )
 
 // PairIntervalS is the floor a client must not poll faster than, published as
@@ -105,8 +101,6 @@ func NewLimiter(l wire.Limits) *Limiter {
 	lim.classes[ClassField] = httpx.NewLimiter(rate(l.FieldIntervalMs), IntervalBurst,
 		GlobalFieldPerSecond, GlobalFieldPerSecond*globalBurstFactor)
 	lim.classes[ClassSummary] = httpx.NewLimiter(rate(l.SummaryIntervalMs), IntervalBurst,
-		GlobalOtherPerSecond, GlobalOtherPerSecond*globalBurstFactor)
-	lim.classes[ClassTTS] = httpx.NewLimiter(TTSPerSecond, TTSBurst,
 		GlobalOtherPerSecond, GlobalOtherPerSecond*globalBurstFactor)
 	lim.classes[ClassPair] = httpx.NewLimiter(1.0/PairIntervalS, PairBurst,
 		GlobalOtherPerSecond, GlobalOtherPerSecond*globalBurstFactor)

@@ -221,7 +221,7 @@ func TestSettings(t *testing.T) {
 		r.Equal("https://pacenote.example.com/pair", d.PairURI)
 		r.Equal(config.DefaultLimits(), d.Limits)
 		r.True(d.Has(wire.FeatureTelemetry))
-		r.False(d.Has(wire.FeatureCoach))
+		r.False(d.Has(wire.FeatureField), "a feature the list does not carry is absent")
 	})
 
 	t.Run("validate", func(t *testing.T) {

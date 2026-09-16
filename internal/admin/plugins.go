@@ -138,7 +138,7 @@ type pluginForm struct {
 	Fields []pluginField
 	// Spend is what this plugin may spend and what it has. It is on this page
 	// rather than in the server's settings because it is this plugin's money:
-	// an operator running a coach and a voice wants to know which one costs.
+	// an operator running two plugins wants to know which one costs.
 	Spend pluginSpend
 	// Output is the last of what it printed, for a plugin that will not start.
 	// It is scrubbed of credentials before it ever reaches here.

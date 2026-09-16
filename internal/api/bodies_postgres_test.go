@@ -30,7 +30,7 @@ func TestEveryRouteRefusesABodyItCannotRead(t *testing.T) {
 	// was given rather than about not being installed.
 	h := newHarness(t, harnessOptions{features: withFeatures(
 		wire.FeatureTelemetry, wire.FeatureReference, wire.FeatureLive,
-		wire.FeatureField, wire.FeatureTTS,
+		wire.FeatureField,
 	)})
 	stint := h.stint(t)
 
@@ -46,7 +46,6 @@ func TestEveryRouteRefusesABodyItCannotRead(t *testing.T) {
 		{name: "a summary", method: http.MethodPut, path: api.Prefix + "/stints/" + stint + "/summary", key: "k-sum"},
 		{name: "live", method: http.MethodPost, path: api.Prefix + "/live"},
 		{name: "the field", method: http.MethodPost, path: api.Prefix + "/field", key: "k-field"},
-		{name: "a spoken cue", method: http.MethodPost, path: api.Prefix + "/tts", key: "k-tts"},
 	}
 	for _, tc := range routes {
 		t.Run(tc.name, func(t *testing.T) {
@@ -162,10 +161,10 @@ func TestTheDiscoveryDocumentIsBuiltFromTheSettings(t *testing.T) {
 	r := require.New(t)
 
 	settings := config.DefaultSettings("Iberian GT Championship", "pacenote.example.com", config.TLSProxy)
-	doc := api.Discovery(settings, []wire.Feature{wire.FeatureTTS})
+	doc := api.Discovery(settings, []wire.Feature{wire.FeatureField})
 
 	r.Equal("Iberian GT Championship", doc.Name)
-	r.Contains(doc.Features, wire.FeatureTTS)
+	r.Contains(doc.Features, wire.FeatureField)
 	r.NotEmpty(doc.PairURI, "a client is printed this address and a driver types it")
 	r.True(strings.HasPrefix(doc.PairURI, "https://pacenote.example.com"), doc.PairURI)
 }

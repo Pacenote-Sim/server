@@ -51,9 +51,13 @@ type instance struct {
 	// dsn is this plugin's own database, empty for one that declared none. It
 	// is set once at construction and read on every start, so a restart after a
 	// crash reconnects to the same schema.
-	dsn      string
-	client   *goplugin.Client
-	impl     plugin.Plugin
+	dsn    string
+	client *goplugin.Client
+	impl   plugin.Plugin
+	// detach stops serving the host to this plugin, for one that asks. It is
+	// called whenever the process is killed, because the channel's goroutine
+	// does not go away on its own.
+	detach   func()
 	declared []plugin.Setting
 	// valueRules is declared with the requirement lifted off every secret,
 	// because a secret is required of the sealed map rather than of the plain
@@ -122,12 +126,26 @@ func (i *instance) answers(k plugin.RequestKind) bool {
 	return i.manifest.Capabilities.Answers(k)
 }
 
+func (i *instance) mayAsk(target string) bool {
+	i.mu.RLock()
+	defer i.mu.RUnlock()
+	return i.manifest.Capabilities.MayAsk(target)
+}
+
 // refresh takes a manifest re-read from disk, so that a rescan after an upgrade
 // shows the new version without restarting a working process.
 func (i *instance) refresh(m plugin.Manifest) {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 	i.manifest = m
+}
+
+// manifestSnapshot is the manifest as last read, for a caller that describes
+// the plugin rather than calls it.
+func (i *instance) manifestSnapshot() plugin.Manifest {
+	i.mu.RLock()
+	defer i.mu.RUnlock()
+	return i.manifest
 }
 
 func (i *instance) status() Status {
@@ -153,13 +171,16 @@ func (i *instance) stop() {
 	i.stopOnce.Do(func() { close(i.done) })
 
 	i.mu.Lock()
-	c := i.client
-	i.client = nil
+	c, d := i.client, i.detach
+	i.client, i.detach = nil, nil
 	i.impl = nil
 	i.mu.Unlock()
 
 	if c != nil {
 		c.Kill()
+	}
+	if d != nil {
+		d()
 	}
 }
 
@@ -348,10 +369,22 @@ func (i *instance) start() error {
 		return fmt.Errorf("%w: it serves something that is not a Pacenote plugin", plugin.ErrInvalid)
 	}
 
+	// A plugin whose manifest names other plugins it asks is handed this host
+	// to ask through, before its settings are read: the plugin's Connected
+	// runs inside that first call. One that names nobody is offered nothing,
+	// so a question from it has nowhere to go — the manifest is the
+	// operator's view of what a plugin does, and this is where it is kept
+	// true.
+	detach := func() {}
+	if len(m.Capabilities.Asks) > 0 {
+		detach, _ = plugin.Attach(impl, &asker{host: i.host, from: m.Name})
+	}
+
 	ctx, cancel := context.WithTimeout(i.host.ctx, i.host.opts.StartTimeout)
 	defer cancel()
 	declared, err := impl.Settings(ctx)
 	if err != nil {
+		detach()
 		client.Kill()
 		return fmt.Errorf("it would not say what it needs configured: %w", err)
 	}
@@ -359,6 +392,7 @@ func (i *instance) start() error {
 	i.mu.Lock()
 	i.client = client
 	i.impl = impl
+	i.detach = detach
 	i.declared = declared
 	i.valueRules = valueRulesFor(declared)
 	i.mu.Unlock()
@@ -401,12 +435,15 @@ func (i *instance) saveDeclared(declared []plugin.Setting) {
 // teardown drops the connection to a process that is already gone.
 func (i *instance) teardown() {
 	i.mu.Lock()
-	c := i.client
-	i.client = nil
+	c, d := i.client, i.detach
+	i.client, i.detach = nil, nil
 	i.impl = nil
 	i.mu.Unlock()
 	if c != nil {
 		c.Kill()
+	}
+	if d != nil {
+		d()
 	}
 }
 
@@ -522,10 +559,17 @@ func (i *instance) ask(ctx context.Context, r plugin.Request) (plugin.Response, 
 	r.Settings = values
 	r.Secrets = secrets
 
+	answerer, ok := impl.(plugin.Answerer)
+	if !ok {
+		// The host's side of every connection answers; this is a fake in a
+		// test standing in for one, and it does not.
+		return plugin.Response{}, fmt.Errorf("%w: %s does not answer requests", plugin.ErrUnsupported, i.name())
+	}
+
 	callCtx, cancel := context.WithDeadline(ctx, r.Deadline)
 	defer cancel()
 
-	res, err := impl.Answer(callCtx, r)
+	res, err := answerer.Answer(callCtx, r)
 	if err != nil {
 		reason := i.scrub.cleanError(err)
 		if errors.Is(err, context.DeadlineExceeded) {
@@ -547,7 +591,10 @@ func (i *instance) ask(ctx context.Context, r plugin.Request) (plugin.Response, 
 		return plugin.Response{}, err
 	}
 
-	i.meter(ctx, res.Usage, driverOf(r.Driver.ID))
+	// A question is not about a driver — its payload is another plugin's and
+	// this host does not read it — so what it cost is recorded against the
+	// plugin that answered and no driver.
+	i.meter(ctx, res.Usage, nil)
 	return res, nil
 }
 

@@ -10,7 +10,7 @@
     "telemetry",
     "reference",
     "live",
-    "tts",
     "field"
-  ]
+  ],
+  "plugins": []
 }

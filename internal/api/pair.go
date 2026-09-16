@@ -37,7 +37,7 @@ func (a *API) postPairStart(w http.ResponseWriter, r *http.Request) {
 		a.deps.Log.LogAttrs(r.Context(), slog.LevelWarn,
 			"the settings could not be read, so the pairing link may be stale", slog.Any("error", err))
 	}
-	settings, _, _, _ := a.snapshot()
+	settings, _, _ := a.snapshot()
 
 	codes, err := auth.NewPairingCodes()
 	if err != nil {
@@ -171,7 +171,7 @@ func (a *API) issueToken(w http.ResponseWriter, r *http.Request, pairing db.Pair
 // device to key a bucket on, so the caller's address is what there is; see
 // [httpx.ClientHost] for why a forwarded header is not trusted here.
 func (a *API) allowByAddress(w http.ResponseWriter, r *http.Request) bool {
-	_, _, _, limiter := a.snapshot()
+	_, _, limiter := a.snapshot()
 	if limiter == nil {
 		return true
 	}

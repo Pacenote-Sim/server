@@ -12,7 +12,7 @@ import (
 	"github.com/pacenote-sim/server/internal/db"
 )
 
-// The facts a plugin is given are derived here, and the derivation is where a
+// The facts a plugin is given are assembled here, and the assembly is where a
 // coach ends up telling a driver something that is not true. These are the
 // arithmetic and the honesty: what is computed, and what is deliberately left
 // empty rather than guessed at.
@@ -36,6 +36,11 @@ func testSession() session {
 	return session{driver: db.Driver{ID: 7, Slug: "ana", Name: "Ana Ruiz"}}
 }
 
+// lapRow is a stored lap with no corner analysis, as encodeLaps writes one.
+func lapRow(number, lapMs int, kind wire.Kind) db.LapRow {
+	return db.LapRow{Number: number, LapMs: lapMs, Kind: string(kind), Corners: []byte("[]")}
+}
+
 // TestLapEventFacts covers the delta and the reference, which are the two
 // numbers a cue is built on.
 func TestLapEventFacts(t *testing.T) {
@@ -43,7 +48,7 @@ func TestLapEventFacts(t *testing.T) {
 
 	cases := []struct {
 		name             string
-		lap              wire.Lap
+		row              db.LapRow
 		best             int
 		wantDelta        int
 		wantReference    string
@@ -51,14 +56,14 @@ func TestLapEventFacts(t *testing.T) {
 	}{
 		{
 			name:          "a lap slower than the stint's best",
-			lap:           wire.Lap{Number: 14, LapMs: 91240, Kind: wire.KindClean},
+			row:           lapRow(14, 91240, wire.KindClean),
 			best:          90400,
 			wantDelta:     840,
 			wantReference: "your best lap of this stint",
 		},
 		{
 			name:             "the best lap of the stint",
-			lap:              wire.Lap{Number: 15, LapMs: 90400, Kind: wire.KindClean},
+			row:              lapRow(15, 90400, wire.KindClean),
 			best:             90400,
 			wantDelta:        0,
 			wantReference:    "your best lap of this stint",
@@ -66,14 +71,14 @@ func TestLapEventFacts(t *testing.T) {
 		},
 		{
 			name:          "a lap that is not clean is never a personal best",
-			lap:           wire.Lap{Number: 16, LapMs: 89000, Kind: wire.KindIn},
+			row:           lapRow(16, 89000, wire.KindIn),
 			best:          90400,
 			wantDelta:     -1400,
 			wantReference: "your best lap of this stint",
 		},
 		{
 			name: "the first lap of a stint, with nothing to compare against",
-			lap:  wire.Lap{Number: 1, LapMs: 93000, Kind: wire.KindClean},
+			row:  lapRow(1, 93000, wire.KindClean),
 			best: 0,
 		},
 	}
@@ -83,12 +88,13 @@ func TestLapEventFacts(t *testing.T) {
 			t.Parallel()
 			r := require.New(t)
 
-			e := lapEvent(slog.New(slog.DiscardHandler), testSession(), testStint(t), tc.lap, tc.best)
+			e := lapEvent(slog.New(slog.DiscardHandler), testSession(), testStint(t), tc.row, tc.best)
 			r.NoError(e.Validate())
 			r.Equal(plugin.EventLapCompleted, e.Kind)
 			r.NotEmpty(e.ID, "a plugin deduplicates on it")
 			r.Equal("ana", e.Driver.Slug)
 			r.Equal("iracing", e.Session.Sim)
+			r.Equal(plugin.LapKind(tc.row.Kind), e.Lap.Kind)
 
 			r.Equal(tc.wantDelta, e.Lap.DeltaMs)
 			r.Equal(tc.wantReference, e.Lap.Reference)
@@ -105,10 +111,10 @@ func TestLapEventFacts(t *testing.T) {
 func TestLapEventsOnlyForLapsThatWereStored(t *testing.T) {
 	t.Parallel()
 
-	rows := []wire.Lap{
-		{Number: 10, LapMs: 92000, Kind: wire.KindClean},
-		{Number: 11, LapMs: 91500, Kind: wire.KindClean},
-		{Number: 12, LapMs: 91240, Kind: wire.KindClean},
+	rows := []db.LapRow{
+		lapRow(10, 92000, wire.KindClean),
+		lapRow(11, 91500, wire.KindClean),
+		lapRow(12, 91240, wire.KindClean),
 	}
 
 	cases := []struct {
@@ -157,9 +163,11 @@ func TestLapEventsOnlyForLapsThatWereStored(t *testing.T) {
 	}
 }
 
-// TestStintEventFacts covers the whole-stint arithmetic: the spread that says
-// whether one corner of the car is working alone, and the fuel figure a
-// strategy is built on.
+// TestStintEventFacts covers the whole-stint facts: every one is a number the
+// client reported, and the two this server used to work out — the fuel per lap
+// and the spread across the tyres — are no longer here, because a plugin that
+// wants them has the numbers and a server that computes them for one plugin is
+// computing them for every plugin.
 func TestStintEventFacts(t *testing.T) {
 	t.Parallel()
 
@@ -180,35 +188,11 @@ func TestStintEventFacts(t *testing.T) {
 	r.NoError(e.Validate())
 	r.Equal(plugin.EventStintFinished, e.Kind)
 	r.Equal(94, e.Stint.ConsistencyPct)
-	r.InDelta(13.0, e.Stint.Tyres.SpreadC, 0.001, "the hottest minus the coldest")
-	r.InDelta(3.0, e.Stint.Fuel.PerLapL, 0.001)
+	r.InDelta(36.0, e.Stint.Fuel.UsedL, 0.001)
 	r.InDelta(12.0, e.Stint.Fuel.RemainingL, 0.001)
+	r.Equal(plugin.TyreSummary{LF: 92, RF: 101, LR: 88, RR: 90}, e.Stint.Tyres,
+		"the four temperatures as reported, and nothing derived from them")
 	r.Equal(finished, e.Stint.FinishedAt)
 	r.Zero(e.Stint.CleanLaps, "the summary does not carry it, so the plugin is told nothing rather than something false")
-}
-
-// TestPerLapAndSpread covers the two pieces of arithmetic on their own,
-// including the divisions nobody expects.
-func TestPerLapAndSpread(t *testing.T) {
-	t.Parallel()
-
-	t.Run("fuel over no laps is zero, not a division by zero", func(t *testing.T) {
-		t.Parallel()
-		r := require.New(t)
-		r.InDelta(0.0, perLap(36, 0), 0.001)
-		r.InDelta(0.0, perLap(36, -1), 0.001)
-	})
-
-	t.Run("the spread of four equal temperatures is nothing", func(t *testing.T) {
-		t.Parallel()
-		r := require.New(t)
-		r.InDelta(0.0, spread(wire.TyreTemps{LF: 90, RF: 90, LR: 90, RR: 90}), 0.001)
-	})
-
-	t.Run("the spread finds the hottest and the coldest wherever they are", func(t *testing.T) {
-		t.Parallel()
-		r := require.New(t)
-		r.InDelta(20.0, spread(wire.TyreTemps{LF: 80, RF: 90, LR: 100, RR: 85}), 0.001)
-		r.InDelta(20.0, spread(wire.TyreTemps{LF: 100, RF: 90, LR: 80, RR: 85}), 0.001)
-	})
+	r.Empty(e.Stint.Setup, "no setup was stored, so none is handed over")
 }

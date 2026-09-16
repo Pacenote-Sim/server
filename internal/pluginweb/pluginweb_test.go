@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/pacenote-sim/plugin"
+	"github.com/pacenote-sim/server/internal/auth"
 	"github.com/pacenote-sim/server/internal/config"
 	"github.com/pacenote-sim/server/internal/driverauth"
 	"github.com/pacenote-sim/server/internal/logging"
@@ -243,6 +244,47 @@ func TestACallerCannotNameThemselves(t *testing.T) {
 	r.Empty(f.got.Header.Get("X-Forwarded-For"))
 	r.Empty(f.got.Header.Get("X-Real-Ip"))
 	r.NotEmpty(f.got.Caller.Remote, "the plugin was told nothing about where the request came from")
+}
+
+// A client's device token is how the server knew who was calling, and it stays
+// with the server. A plugin handed it could upload laps as that driver.
+func TestAClientsTokenIsNotForwarded(t *testing.T) {
+	t.Parallel()
+
+	token, err := auth.NewDeviceToken()
+	require.NoError(t, err)
+
+	cases := []struct {
+		name  string
+		value string
+		kept  bool
+	}{
+		{name: "one of this server's device tokens", value: "Bearer " + token.Plain, kept: false},
+		{name: "the same token, scheme spelled in lower case", value: "bearer " + token.Plain, kept: false},
+		{name: "a bearer of some other shape, for a plugin's own scheme", value: "Bearer not-one-of-ours", kept: true},
+		{name: "a basic credential", value: "Basic YW5hOnNlY3JldA==", kept: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			r := require.New(t)
+
+			f := &fake{route: true, access: plugin.AccessDriver, res: plugin.Text(http.StatusOK, "ok")}
+			who := pluginweb.Caller{DriverSlug: "ana-ruiz", DriverName: "Ana Ruiz"}
+			res := call(t, mounted(t, f, who), http.MethodGet, "/plugin/results/", "",
+				http.Header{"Authorization": {tc.value}, "Accept": {"application/json"}})
+			_ = res.Body.Close()
+
+			r.Equal(http.StatusOK, res.StatusCode)
+			r.Equal("ana-ruiz", f.got.Caller.DriverSlug, "the plugin is told who")
+			if tc.kept {
+				r.Equal(tc.value, f.got.Header.Get("Authorization"))
+			} else {
+				r.Empty(f.got.Header.Get("Authorization"), "and never sees the token")
+			}
+			r.Equal("application/json", f.got.Header.Get("Accept"), "everything else still arrives")
+		})
+	}
 }
 
 func TestWhoMayReachAPlugin(t *testing.T) {

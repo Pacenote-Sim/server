@@ -50,7 +50,7 @@ type harness struct {
 type harnessOptions struct {
 	// features overrides what this installation has, which is how the two
 	// enterprise endpoints are tested as present as well as as absent.
-	features func(api.Answering, api.Keys) []wire.Feature
+	features func() []wire.Feature
 	// settings is applied over the defaults before the API is built.
 	settings func(*config.Settings)
 	// onRequest receives the route pattern, status and duration of every
@@ -100,7 +100,6 @@ func newHarness(tb testing.TB, opts harnessOptions) *harness {
 	v1, err := api.New(ctx, api.Deps{
 		Log:       logging.Discard(),
 		Store:     store,
-		Keyring:   auth.NewKeyring(testSecretKey(tb)),
 		Features:  opts.features,
 		OnRequest: opts.onRequest,
 		Plugins:   opts.plugins,
@@ -137,18 +136,6 @@ func (h *harness) column(sql string, args ...any) string {
 	var out string
 	r.NoError(conn.QueryRow(ctx, sql, args...).Scan(&out))
 	return out
-}
-
-// testSecretKey is the data key the sealed settings in these tests are made
-// with. It is a fixed value so a fixture is reproducible; it opens nothing
-// outside this package.
-func testSecretKey(tb testing.TB) auth.SecretKey {
-	tb.Helper()
-	key := make(auth.SecretKey, auth.SecretKeyBytes)
-	for i := range key {
-		key[i] = byte(i)
-	}
-	return key
 }
 
 // pair runs the real device-code flow end to end: the client asks, the operator

@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"github.com/pacenote-sim/plugin"
+	"github.com/pacenote-sim/server/internal/auth"
+	"github.com/pacenote-sim/server/internal/httpx"
 	"github.com/pacenote-sim/server/internal/plugins"
 )
 
@@ -32,7 +34,8 @@ var hopByHop = map[string]bool{
 }
 
 // hiddenFromPlugin are the request headers a plugin is not shown even though
-// they are not hop-by-hop.
+// they are not hop-by-hop. Authorization is handled beside them, in inbound: it
+// is hidden when it carries this server's own device token and kept otherwise.
 //
 // The forwarded-for family is the operator's proxy telling this server where a
 // request came from. The server resolves that once, into
@@ -70,6 +73,9 @@ func inbound(name string, h http.Header) http.Header {
 		if hopByHop[key] || hiddenFromPlugin[key] {
 			continue
 		}
+		if key == "Authorization" && carriesDeviceToken(values) {
+			continue
+		}
 		if len(out) >= plugins.MaxServeHeaders {
 			break
 		}
@@ -79,6 +85,28 @@ func inbound(name string, h http.Header) http.Header {
 		out.Set("Cookie", cookies)
 	}
 	return out
+}
+
+// carriesDeviceToken reports whether an Authorization header holds one of this
+// server's own device tokens — the credential a client uploads with.
+//
+// The host has already turned it into [plugin.Caller]; forwarding it as well
+// would hand a plugin a credential good against the whole API in that driver's
+// name, and an operator installing a leaderboard is not agreeing to that. It is
+// hidden whether or not it resolved: a revoked token is still ours. A Bearer
+// that is not shaped like ours passes through, for a plugin that runs its own
+// scheme on a custom route.
+func carriesDeviceToken(values []string) bool {
+	for _, v := range values {
+		token, ok := httpx.ParseBearer(v)
+		if !ok {
+			continue
+		}
+		if _, _, err := auth.SplitDeviceToken(token); err == nil {
+			return true
+		}
+	}
+	return false
 }
 
 // ownCookies is the Cookie header rebuilt with only the cookies belonging to

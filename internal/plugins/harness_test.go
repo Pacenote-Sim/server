@@ -109,7 +109,8 @@ func manifestFor(name string) plugin.Manifest {
 		Binary:           "testplugin",
 		Capabilities: plugin.Capabilities{
 			Events:          []plugin.EventKind{plugin.EventLapCompleted, plugin.EventStintFinished},
-			Requests:        []plugin.RequestKind{plugin.RequestCueRace, plugin.RequestCueTraining, plugin.RequestDebrief, plugin.RequestSetup},
+			Requests:        kindsOf(name),
+			Asks:            asksFor(name),
 			ReadsDriverData: true,
 		},
 	}
@@ -529,6 +530,13 @@ func (f *fakeStore) setValue(name, value string) {
 	f.settings[testPluginName] = append(f.settings[testPluginName], db.PluginSettingRow{Name: name, Value: value})
 }
 
+// setValueFor stores a plain setting for a plugin installed under another name.
+func (f *fakeStore) setValueFor(pluginName, name, value string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.settings[pluginName] = append(f.settings[pluginName], db.PluginSettingRow{Name: name, Value: value})
+}
+
 // setSecret stores a sealed credential the way the panel would.
 func (f *fakeStore) setSecret(tb testing.TB, key auth.SecretKey, name, value string) {
 	tb.Helper()
@@ -644,6 +652,29 @@ func statusOf(tb testing.TB, h *plugins.Host, name string) plugins.Status {
 	return plugins.Status{}
 }
 
+// kindsOf is what the example plugin answers when installed under a name: its
+// kinds are spelled with that name, as the contract requires.
+func kindsOf(name string) []plugin.RequestKind {
+	return []plugin.RequestKind{
+		plugin.RequestKind(name + ".echo"),
+		plugin.RequestKind(name + ".ask"),
+		plugin.RequestKind(name + ".chain"),
+	}
+}
+
+// asksFor is the plugins a test installation may ask: every name these tests
+// install under, minus its own, because a plugin may not declare that it asks
+// itself.
+func asksFor(name string) []string {
+	var out []string
+	for _, other := range []string{"testplugin", "otherplugin", "alpha", "beta"} {
+		if other != name {
+			out = append(out, other)
+		}
+	}
+	return out
+}
+
 // lapEvent is a plausible lap.completed, so that no test has to build one.
 func lapEvent(driver string) plugin.Event {
 	return plugin.Event{
@@ -655,24 +686,22 @@ func lapEvent(driver string) plugin.Event {
 		Lap: &plugin.LapFacts{
 			Number: 14, LapMs: 91240, Kind: plugin.LapClean, DeltaMs: 840,
 			Reference: "your best lap of this stint",
-			Corners: []plugin.Corner{{
-				Turn: 4, ApexPct: 312, ApexKmh: 112, ReferenceApexKmh: 121, DeficitKmh: 9,
-				BrakeAtApex: 31, ThrottleLag: 14, Pattern: plugin.PatternEarlyApex,
-			}},
+			Corners: json.RawMessage(`[{"turn":4,"apex_pct":312,"apex_kmh":112,"ref_apex_kmh":121,` +
+				`"deficit_kmh":9,"brake_at_apex":31,"throttle_lag":14,"pattern":"early_apex"}]`),
 			SpokenLap: "one minute 31.2 seconds",
 		},
 	}
 }
 
-// cueRequest is a plausible cue.training.
-func cueRequest() plugin.Request {
-	e := lapEvent("ana")
+// echoRequest is a question the example plugin answers by echoing it, put to a
+// plugin installed under name. From is the test's own word for itself: this
+// is the host asking directly, the way the broker does on a plugin's behalf.
+func echoRequest(name string) plugin.Request {
 	return plugin.Request{
 		ID:      "r-1",
-		Kind:    plugin.RequestCueTraining,
-		Driver:  e.Driver,
-		Session: e.Session,
-		Lap:     e.Lap,
+		Kind:    plugin.RequestKind(name + ".echo"),
+		From:    "test",
+		Payload: json.RawMessage(`{"turn":4}`),
 	}
 }
 

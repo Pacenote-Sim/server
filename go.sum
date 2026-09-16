@@ -80,10 +80,10 @@ github.com/ncruces/go-strftime v1.0.0 h1:HMFp8mLCTPp341M/ZnA4qaf7ZlsbTc+miZjCLOF
 github.com/ncruces/go-strftime v1.0.0/go.mod h1:Fwc5htZGVVkseilnfgOVb9mKy6w1naJmn9CehxcKcls=
 github.com/oklog/run v1.1.0 h1:GEenZ1cK0+q0+wsJew9qUg/DyD8k3JzYsZAi5gYi2mA=
 github.com/oklog/run v1.1.0/go.mod h1:sVPdnTZT1zYwAJeCMu2Th4T21pA3FPOQRfWjQlk7DVU=
-github.com/pacenote-sim/plugin v0.1.0 h1:hV2KFuWx94kYXjp178Pm+PyUGnBfimJqkOAK/iqerD4=
-github.com/pacenote-sim/plugin v0.1.0/go.mod h1:WB9T6Ce5wZiiVUYDwUO8fViTwkex65J/c+IAAEBY2DA=
-github.com/pacenote-sim/protocol v0.1.0 h1:2Qc9CeopVLa+3UZN/bo2BYC4wdkY4PQ/WlobK0cMpM4=
-github.com/pacenote-sim/protocol v0.1.0/go.mod h1:blcjClZCj3Q+MZWCOh6bFo2YNf+NLMaNhmZHY8sIFzI=
+github.com/pacenote-sim/plugin v0.2.0 h1:JORkU/MDXrxHKdYUClKjsOO9BzIQ0WPgMomO9YopAdA=
+github.com/pacenote-sim/plugin v0.2.0/go.mod h1:WB9T6Ce5wZiiVUYDwUO8fViTwkex65J/c+IAAEBY2DA=
+github.com/pacenote-sim/protocol v0.2.0 h1:2DIi4EhVZtVEmnt0eI8AMJIzbTcQTiMekebIGo7gnjQ=
+github.com/pacenote-sim/protocol v0.2.0/go.mod h1:blcjClZCj3Q+MZWCOh6bFo2YNf+NLMaNhmZHY8sIFzI=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/pressly/goose/v3 v3.26.0 h1:KJakav68jdH0WDvoAcj8+n61WqOIaPGgH0bJWS6jpmM=
 github.com/pressly/goose/v3 v3.26.0/go.mod h1:4hC1KrritdCxtuFsqgs1R4AU5bWtTAf+cnWvfhf2DNY=

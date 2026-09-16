@@ -29,12 +29,8 @@ const (
 	msgLapConflict      = "Some of those laps are already stored with different content — nothing in the batch was stored, and the lap numbers are in the detail."
 	msgServerError      = "Something went wrong on the server. Try again."
 	msgUnavailableAgain = "That write was interrupted and nothing was stored — send it again."
-	msgTTSUnavailable   = "The voice coach is not available on this server — the operator has not installed a plugin that speaks."
-	msgTTSUnconfigured  = "The voice plugin on this server has not been configured yet — the cue was written but not spoken."
-	msgTTSFailed        = "Nothing spoke that cue — it was written, and driving carries on without it."
 	msgFieldUnavailable = "The field relay is not available on this server — this is the community edition, which records one driver rather than a whole session."
 	msgLiveUnavailable  = "Live telemetry is not available on this server — the operator has turned it off."
-	msgCoachUnavailable = "The coach is not available on this server — the operator has not installed a plugin that does the coaching."
 )
 
 // fail writes the v1 error envelope and logs the fact at debug, which is where

@@ -97,7 +97,7 @@ func (a *API) postLaps(w http.ResponseWriter, r *http.Request, s session) {
 			slog.Int("sent", len(rows)))
 
 		if a.deps.Plugins != nil {
-			events = lapEvents(a.deps.Log, s, stint, body.Laps, res)
+			events = lapEvents(a.deps.Log, s, stint, rows, res)
 		}
 
 		return answer(http.StatusOK, wire.LapBatchResult{

@@ -31,10 +31,10 @@
 // [wire.Discovery.Features] nor [wire.Me.Features], and its endpoint answers
 // [wire.CodeForbidden] rather than 404. The difference matters to a client: a
 // 404 is a server it does not understand, and a forbidden feature is a button
-// it turns off. The features an installation has are computed from what it
-// actually holds — the language-model features need the operator's own
-// plugin that answers it, and the voice coach needs a plugin that speaks — so an operator who
-// has configured neither simply has neither, with nothing to switch off.
+// it turns off. The features are the core's own and follow nothing an operator
+// configures; what is installed beside the core is not a feature at all but a
+// list of plugins and their routes on GET /me, and a client decides what it
+// knows how to talk to.
 //
 // # Golden fixtures
 //

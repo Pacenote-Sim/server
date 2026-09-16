@@ -90,7 +90,7 @@
       <input type="hidden" name="csrf" value="{{.CSRF}}">
       <input type="hidden" name="action" value="regenerate_data_key">
       <h3>Regenerate the data key</h3>
-      <p class="muted">The data key encrypts every credential this server stores — the voice key above, and whatever your plugins hold. Replacing it re-seals all of them with the new key and writes it into the configuration file beside this binary. A database backup taken before now can no longer be opened with it, so keep the old configuration file if you keep old backups.</p>
+      <p class="muted">The data key encrypts every credential your plugins hold. Replacing it re-seals all of them with the new key and writes it into the configuration file beside this binary. A database backup taken before now can no longer be opened with it, so keep the old configuration file if you keep old backups.</p>
 {{if .Form.HasDataKey}}      <label class="field">
         <span class="lbl">Type regenerate to confirm</span>
         <input type="text" name="confirm" class="mono" value="" autocomplete="off" placeholder="regenerate">

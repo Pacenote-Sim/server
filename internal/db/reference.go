@@ -11,7 +11,7 @@ import (
 	"github.com/pacenote-sim/server/internal/db/gen"
 )
 
-// ReferenceQuery asks for the lap the coach compares a driver against.
+// ReferenceQuery asks for the lap a driver's own is compared against.
 //
 // Sim is required and is matched exactly. A lap is only ever compared against a
 // lap from the same simulator: two simulators arrive at the same slug for the

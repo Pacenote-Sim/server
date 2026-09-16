@@ -6,6 +6,37 @@ the patch when something was wrong.
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-09-16
+
+### Added
+
+- **Plugins ask each other, through the server.** A plugin that declares `asks: ["drivers"]` in its
+  manifest is handed the server when it starts and can put a question — `drivers.lookup`, with a
+  payload of its own — to the plugin whose name the kind carries. The server stamps who asked,
+  checks both manifests, charges the answering plugin's daily cap, applies the deadline, stops a
+  question that would pass through more than three plugins, and never reads the payload. The panel
+  shows *Asks drivers for information.* on the plugin's page. Plugin interface version 3.
+- **A client can reach a plugin's driver routes with its device token.** The token a client uploads
+  with now identifies it on `/plugin/<name>/…` the way it does on the API, so a plugin is told which
+  driver is calling whether they came from a browser or from the telemetry client. The token itself
+  is kept from the plugin: an `Authorization` header carrying one of this server's device tokens is
+  not forwarded, whether or not it was still valid.
+- **A plugin's pages are linked from its page in the panel,** under *Its pages*.
+- **`scripts/demo.sql`** writes demo drivers, stints and laps, for a server nobody has driven on yet.
+  Not in the release package.
+
+### Changed
+
+- **A plugin is handed the corner analysis and the car setup as the documents the client sent,**
+  not copied into fields the server names. A client that measures something new reaches every
+  plugin without a change here. Plugin interface version 2.
+- **The server no longer works out the fuel per lap or the spread across the tyres for a plugin.**
+  A plugin that wants them has the four temperatures and the fuel used.
+- **`GET /me` lists the plugins a client can talk to** — each running plugin, its version, and the
+  routes a client could reach under `/plugin/<name>/`. A client, or a plugin of the client's own,
+  decides what it knows how to use; the server no longer guesses on its behalf.
+- Tables that list rows have room between their columns.
+
 ### Fixed
 
 - **A plugin that needs a credential could not be used.** A required key was checked against the
@@ -13,15 +44,19 @@ the patch when something was wrong.
 - **A plugin could not serve its pages until it was configured,** including the page you configure it
   on. It is now told what is set and decides for itself.
 
-### Added
+### Removed
 
-- **A plugin's pages are linked from its page in the panel,** under *Its pages*.
-- **`scripts/demo.sql`** writes demo drivers, stints and laps, for a server nobody has driven on yet.
-  Not in the release package.
+- **The server asking plugins for anything.** The four coaching jobs and the voice job were kinds the
+  server enumerated and never asked for; a request kind is now whatever the answering plugin
+  declares, spelled `<its name>.<what>`, and the only thing that asks is another plugin.
+- **The `coach` and `setups` features.** They were advertised whenever a plugin's manifest *declared*
+  it answered a coaching request — engineer declares them and nothing asks — so a client was told it
+  had a coach with no endpoint behind it. A plugin is not a feature; see `GET /me`.
 
-### Changed
-
-- Tables that list rows have room between their columns.
+- **`POST /tts`.** The server no longer relays speech. A voice plugin serves its own route under
+  `/plugin/<name>/` and a client calls it there; this server never held a voice, and now it does not
+  hold the endpoint either. Protocol 0.2.0 drops `TTSRequest` and the `tts` feature with it. No
+  published client calls the old route.
 
 ## [0.1.0] — 2026-09-14
 

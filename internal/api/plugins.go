@@ -22,16 +22,6 @@ type EventSink interface {
 	Notify(ctx context.Context, e plugin.Event)
 }
 
-// Asking is a host that can be asked for something with the caller waiting. It
-// is separate from [EventSink] because the two are used at different moments —
-// an event is fire and forget after a write, a request is a driver holding on —
-// and because a server built without plugins satisfies neither.
-type Asking interface {
-	// Ask puts a request to whichever plugin answers that kind and returns the
-	// first usable answer.
-	Ask(ctx context.Context, r plugin.Request) (plugin.Response, error)
-}
-
 // publish sends the events a request produced, after the write that produced
 // them has committed. Nothing is published for a write that failed or for one
 // that was replayed from an idempotency key, because neither of those is a lap
@@ -82,11 +72,9 @@ func pluginSession(stint db.Stint) plugin.Session {
 // lapEvents is one event per lap this batch actually stored. A lap the stint
 // already held produces nothing: it happened once, so it is announced once.
 //
-// It reads the laps as the client sent them rather than as they were encoded
-// for the database. The facts are the client's own numbers, and taking them off
-// the encoded row would mean decoding a trace blob and a JSON document to
-// recover what is still in hand.
-func lapEvents(log *slog.Logger, s session, stint db.Stint, laps []wire.Lap, res db.LapResult) []plugin.Event {
+// It reads the rows as they were written, so that what a plugin is handed is
+// what the database holds and not a second rendering of the same upload.
+func lapEvents(log *slog.Logger, s session, stint db.Stint, rows []db.LapRow, res db.LapResult) []plugin.Event {
 	if len(res.Stored) == 0 {
 		return nil
 	}
@@ -95,9 +83,9 @@ func lapEvents(log *slog.Logger, s session, stint db.Stint, laps []wire.Lap, res
 		stored[n] = true
 	}
 	events := make([]plugin.Event, 0, len(res.Stored))
-	for i := range laps {
-		if stored[laps[i].Number] {
-			events = append(events, lapEvent(log, s, stint, laps[i], res.BestLapMs))
+	for i := range rows {
+		if stored[rows[i].Number] {
+			events = append(events, lapEvent(log, s, stint, rows[i], res.BestLapMs))
 		}
 	}
 	return events
@@ -108,44 +96,48 @@ func lapEvents(log *slog.Logger, s session, stint db.Stint, laps []wire.Lap, res
 // The delta is against the best lap of this stint, which is the reference the
 // write path already holds. It is not the driver's best at this circuit and not
 // the class best — those are a query each, on the path a driver waits on, and
-// they belong to the step that gives the coaching plugin a reference lap rather
-// than to this one. [plugin.LapFacts.Reference] says which it is in words, so a
-// plugin is never left guessing what the number means.
+// they belong to the step that gives a plugin a reference lap rather than to
+// this one. [plugin.LapFacts.Reference] says which it is in words, so a plugin
+// is never left guessing what the number means.
 //
-// Corners are the client's own corner analysis, carried across unchanged. The
-// detector is in the client — it is the only thing that holds a lap's trace at
-// full resolution while the lap is being driven — and what it measured is
-// copied here rather than recomputed, because it is measured against a
-// reference lap this server did not choose and could not reproduce.
-//
-// A lap with no corners is still normal and still common: a lap with no
-// reference to compare against has no deficits to report, and a plugin must
-// cope with that rather than invent a turn number.
-func lapEvent(log *slog.Logger, s session, stint db.Stint, lap wire.Lap, bestLapMs int) plugin.Event {
+// The corner analysis is the client's own document, handed over as it was
+// stored. This server validated its bounds on the way in and has no other
+// opinion about it: what is in a corner is between the client that measured it
+// and the plugin that reads it, and a client that starts measuring something
+// new reaches every plugin without a change here.
+func lapEvent(log *slog.Logger, s session, stint db.Stint, row db.LapRow, bestLapMs int) plugin.Event {
 	facts := plugin.LapFacts{
-		Number:    lap.Number,
-		LapMs:     lap.LapMs,
-		Kind:      plugin.LapKind(lap.Kind),
-		StartedAt: lap.StartedAt,
-		Corners:   pluginCorners(lap.Corners),
+		Number:    row.Number,
+		LapMs:     row.LapMs,
+		Kind:      plugin.LapKind(row.Kind),
+		StartedAt: row.StartedAt,
+		Corners:   cornersDocument(row.Corners),
 	}
 	if bestLapMs > 0 {
 		facts.Reference = "your best lap of this stint"
-		facts.DeltaMs = lap.LapMs - bestLapMs
-		facts.PersonalBest = lap.LapMs <= bestLapMs && lap.Kind == wire.KindClean
+		facts.DeltaMs = row.LapMs - bestLapMs
+		facts.PersonalBest = row.LapMs <= bestLapMs && row.Kind == string(wire.KindClean)
 	}
 	return plugin.Event{
 		ID:      eventID(log),
 		Kind:    plugin.EventLapCompleted,
-		At:      lap.StartedAt,
+		At:      row.StartedAt,
 		Driver:  pluginDriver(s.driver),
 		Session: pluginSession(stint),
 		Lap:     &facts,
 	}
 }
 
-// stintEvent turns a final summary into the facts a debrief is written from,
-// and the car it was driven on into the facts setup advice is written from.
+// stintEvent turns a final summary into the facts a plugin is given about the
+// whole stint.
+//
+// Every number here is one the client reported. Nothing is worked out on its
+// behalf — not the fuel per lap, not the spread across the tyres — because a
+// figure this server computes for one plugin is a figure it has to keep
+// computing for every plugin, and the plugin that wants it has the numbers.
+//
+// The setup is the client's own document, handed over as it was stored, on the
+// same terms as the corner analysis.
 func stintEvent(log *slog.Logger, s session, stint db.Stint, body wire.Summary) plugin.Event {
 	car := body.CarState
 	facts := plugin.StintFacts{
@@ -158,16 +150,14 @@ func stintEvent(log *slog.Logger, s session, stint db.Stint, body wire.Summary) 
 		Fuel: plugin.FuelSummary{
 			UsedL:      car.FuelUsedL,
 			RemainingL: car.FuelLevelL,
-			PerLapL:    perLap(car.FuelUsedL, body.Laps),
 		},
 		Tyres: plugin.TyreSummary{
-			LF:      car.TyreTempC.LF,
-			RF:      car.TyreTempC.RF,
-			LR:      car.TyreTempC.LR,
-			RR:      car.TyreTempC.RR,
-			SpreadC: spread(car.TyreTempC),
+			LF: car.TyreTempC.LF,
+			RF: car.TyreTempC.RF,
+			LR: car.TyreTempC.LR,
+			RR: car.TyreTempC.RR,
 		},
-		Setup: pluginSetup(log, stint),
+		Setup: setupDocument(stint.Setup),
 		Conditions: plugin.Conditions{
 			Skies:      body.Conditions.Skies,
 			Wetness:    body.Conditions.Wetness,
@@ -193,117 +183,37 @@ func stintEvent(log *slog.Logger, s session, stint db.Stint, body wire.Summary) 
 	}
 }
 
-// pluginCorners maps a lap's corner analysis onto the facts. It is a copy field
-// for field: the two types carry the same measurements in the same units, and
-// the wire is where the units are defined.
+// cornersDocument is the corner analysis as a plugin is handed it: the stored
+// document, or nothing.
 //
-// A lap with no corners yields nil rather than an empty slice, so that the
-// field is omitted from the JSON a plugin decodes and "nothing to say about the
-// corners" has one spelling.
-func pluginCorners(corners []wire.Corner) []plugin.Corner {
-	if len(corners) == 0 {
+// The column holds an empty array for a lap that arrived with no corners, so
+// that every row reads the same way. A plugin is told nothing instead — the key
+// is absent — because "no corners" is the normal case and an empty list where
+// a plugin expected an absent key is a thing it has to have an opinion about.
+// That is the one reading of the document this server does, and it is reading
+// its own storage convention, not the client's schema.
+func cornersDocument(stored []byte) json.RawMessage {
+	if isEmptyDocument(stored) || string(stored) == "[]" {
 		return nil
 	}
-	out := make([]plugin.Corner, 0, len(corners))
-	for _, c := range corners {
-		out = append(out, plugin.Corner{
-			Turn:             c.Turn,
-			ApexPct:          c.ApexPct,
-			ApexKmh:          c.ApexKmh,
-			ReferenceApexKmh: c.RefApexKmh,
-			DeficitKmh:       c.DeficitKmh,
-			BrakeAtApex:      c.BrakeAtApex,
-			ThrottleLag:      c.ThrottleLag,
-			Pattern:          plugin.CornerPattern(c.Pattern),
-		})
-	}
-	return out
+	return json.RawMessage(stored)
 }
 
-// pluginSetup decodes the setup the stint was stored with and maps it onto the
-// facts, or returns nil.
+// setupDocument is the car setup as a plugin is handed it: the stored document,
+// or nothing when the client sent none.
 //
-// Nil is the answer to every kind of absence there is: a client that sent no
-// setup, a simulator that publishes none, a series that locks it away, and a
-// stored document this build cannot read. The last of those is the reason this
-// swallows the decode error rather than failing the event: a stint whose setup
-// column holds something unexpected still finished, and a debrief about it is
-// worth more than no debrief at all. What a plugin must never be handed is half
-// a setup presented as a whole one.
-func pluginSetup(log *slog.Logger, stint db.Stint) *plugin.CarSetup {
-	if len(stint.Setup) == 0 {
+// It is not decoded here. A document this server cannot read is still the
+// document the client sent, and whether it is a setup is the plugin's to
+// decide; a server that dropped it because it did not understand it would be
+// deciding that for every plugin at once.
+func setupDocument(stored []byte) json.RawMessage {
+	if isEmptyDocument(stored) {
 		return nil
 	}
-	var stored wire.CarSetup
-	if err := json.Unmarshal(stint.Setup, &stored); err != nil {
-		log.LogAttrs(context.Background(), slog.LevelWarn, "a stored car setup could not be read",
-			slog.String("stint_id", stint.ID.String()), slog.String("error", err.Error()))
-		return nil
-	}
-	out := plugin.CarSetup{
-		UpdateCount: stored.UpdateCount,
-		RearWing:    pluginSetupValue(stored.RearWing),
-	}
-	for _, t := range stored.Tyres {
-		out.Tyres = append(out.Tyres, plugin.SetupTyre{
-			Wheel:          plugin.Wheel(t.Wheel),
-			ColdKpa:        t.ColdKpa,
-			HotKpa:         t.HotKpa,
-			TempInnerC:     t.TempInnerC,
-			TempMiddleC:    t.TempMiddleC,
-			TempOuterC:     t.TempOuterC,
-			TreadInnerPct:  t.TreadInnerPct,
-			TreadMiddlePct: t.TreadMiddlePct,
-			TreadOuterPct:  t.TreadOuterPct,
-		})
-	}
-	for _, v := range stored.Values {
-		out.Values = append(out.Values, *pluginSetupValue(&v))
-	}
-	if out.UpdateCount == 0 && len(out.Tyres) == 0 && out.RearWing == nil && len(out.Values) == 0 {
-		// A document that decoded to nothing is not a setup, whatever the
-		// column held.
-		return nil
-	}
-	return &out
+	return json.RawMessage(stored)
 }
 
-// pluginSetupValue maps one named setting, passing nil through: the rear wing
-// is a setting a car may not have.
-func pluginSetupValue(v *wire.SetupValue) *plugin.SetupValue {
-	if v == nil {
-		return nil
-	}
-	return &plugin.SetupValue{
-		Group:  v.Group,
-		Name:   v.Name,
-		Text:   v.Text,
-		Number: v.Number,
-		Unit:   v.Unit,
-	}
-}
-
-// perLap is the fuel figure a strategy is built on. Zero laps is zero rather
-// than a division by zero.
-func perLap(used float64, laps int) float64 {
-	if laps <= 0 {
-		return 0
-	}
-	return used / float64(laps)
-}
-
-// spread is the hottest tyre minus the coldest, which is the number that says
-// whether one corner of the car is working alone.
-func spread(t wire.TyreTemps) float64 {
-	temps := [4]float64{t.LF, t.RF, t.LR, t.RR}
-	lo, hi := temps[0], temps[0]
-	for _, v := range temps[1:] {
-		if v < lo {
-			lo = v
-		}
-		if v > hi {
-			hi = v
-		}
-	}
-	return hi - lo
+// isEmptyDocument is a column holding nothing: no bytes, or a JSON null.
+func isEmptyDocument(stored []byte) bool {
+	return len(stored) == 0 || string(stored) == "null"
 }

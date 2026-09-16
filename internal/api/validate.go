@@ -11,14 +11,13 @@ import (
 // far wider than any honest value and narrow enough that a column cannot be
 // used as storage: a text field is a name, not a place to keep a document.
 const (
-	MaxNameLen    = 200
-	MaxShortLen   = 64
-	MaxSectors    = 64
-	MaxLapNumber  = 100_000
-	MaxLapMs      = 3_600_000 // one hour, the same bound the trace codec puts on t
-	MaxSpeedKmh   = 1_000
-	MaxIncidents  = 100_000
-	MaxTTSTextLen = 2_000
+	MaxNameLen   = 200
+	MaxShortLen  = 64
+	MaxSectors   = 64
+	MaxLapNumber = 100_000
+	MaxLapMs     = 3_600_000 // one hour, the same bound the trace codec puts on t
+	MaxSpeedKmh  = 1_000
+	MaxIncidents = 100_000
 	// MaxCornersPerLap bounds a lap's corner analysis. No circuit has sixty-four
 	// corners, and the client's own widest setting reports ninety-nine, so this
 	// is wider than any real lap and narrow enough that the column cannot be

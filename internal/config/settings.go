@@ -305,9 +305,9 @@ func ValidateAccent(accent string) error {
 	return nil
 }
 
-// ValidateURL checks one of the absolute URLs an operator types — a logo, a
-// voice endpoint. Empty is allowed and means the feature is off; anything else
-// has to be http or https, because it is fetched or posted to.
+// ValidateURL checks an absolute URL an operator types — the logo. Empty is
+// allowed and means none; anything else has to be http or https, because it is
+// fetched.
 func ValidateURL(kind, raw string) error {
 	v := strings.TrimSpace(raw)
 	if v == "" {

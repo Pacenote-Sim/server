@@ -134,8 +134,7 @@ sqlc:
 
 ## tidy-check: fail if go.mod or go.sum would change
 tidy-check:
-	go mod tidy
-	@git diff --quiet go.mod go.sum || { echo "go.mod or go.sum is not tidy"; exit 1; }
+	go mod tidy -diff
 
 ## vuln: known vulnerabilities in the dependency graph
 vuln:

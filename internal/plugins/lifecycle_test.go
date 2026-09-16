@@ -49,7 +49,7 @@ func TestDisableStopsThePluginAndSticks(t *testing.T) {
 	// No process: a disabled plugin that was still running would be a switch
 	// that does nothing.
 	r.Empty(stateOf(h.host, "testplugin"), "the instance was left supervised")
-	_, err := h.host.Ask(t.Context(), "testplugin", cueRequest())
+	_, err := h.host.Ask(t.Context(), "testplugin", echoRequest("testplugin"))
 	r.Error(err, "a disabled plugin answered a request")
 
 	all, err := h.host.All(t.Context())
@@ -87,9 +87,9 @@ func TestEnableStartsAPluginThatWasTurnedOff(t *testing.T) {
 		return stateOf(h.host, "testplugin") == plugins.StateRunning
 	})
 
-	res, err := h.host.Ask(t.Context(), "testplugin", cueRequest())
+	res, err := h.host.Ask(t.Context(), "testplugin", echoRequest("testplugin"))
 	r.NoError(err)
-	r.NotEmpty(res.Text)
+	r.NotEmpty(res.Payload)
 
 	// Pressing it twice is not an error, and does not start a second process.
 	r.NoError(h.host.Enable(t.Context(), "testplugin"))
@@ -111,7 +111,7 @@ func TestRestartBringsAPluginBack(t *testing.T) {
 
 	r.NoError(h.host.Restart(t.Context(), "testplugin"))
 	eventually(t, "the plugin to answer again", func() bool {
-		_, err := h.host.Ask(t.Context(), "testplugin", cueRequest())
+		_, err := h.host.Ask(t.Context(), "testplugin", echoRequest("testplugin"))
 		return err == nil
 	})
 
@@ -597,6 +597,10 @@ func TestServingWhatHasNoRoute(t *testing.T) {
 		return stateOf(h.host, "coach") == plugins.StateRunning
 	})
 
+	running := h.host.Running()
+	r.Len(running, 1, "one plugin is running, and a client is told about that one")
+	r.Equal("coach", running[0].Name)
+
 	_, ok := h.host.Access("coach", "/")
 	r.False(ok, "a plugin that asked for no route was given one")
 	_, err := h.host.Serve(ctx, "coach", plugin.HTTPRequest{Method: http.MethodGet, Path: "/"})
@@ -615,6 +619,7 @@ func TestServingWhatHasNoRoute(t *testing.T) {
 	r.NoError(h.host.Disable(ctx, "coach"))
 	_, err = h.host.Serve(ctx, "coach", plugin.HTTPRequest{Method: http.MethodGet, Path: "/"})
 	r.ErrorIs(err, plugins.ErrNoPlugin)
+	r.Empty(h.host.Running(), "a plugin the operator switched off is not one a client is told about")
 }
 
 // A plugin that crashes while serving is reported and restarted, and the

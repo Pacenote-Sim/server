@@ -72,16 +72,6 @@ func (p *Panel) renderSettings(w http.ResponseWriter, r *http.Request, sess db.A
 	}
 	form := p.settingsForm(ctx, settings)
 
-	// This is the one page in the panel that runs any script — the Test voice
-	// button — so it gets a policy of its own rather than loosening the one
-	// every other page wears. The script is a file inside this binary, the
-	// fetch goes back to this server, and the audio is a blob the script made
-	// from the answer. Nothing else is allowed, inline script included.
-	w.Header().Set("Content-Security-Policy",
-		"default-src 'none'; img-src 'self' data:; style-src 'self'; script-src 'self'; "+
-			"connect-src 'self'; media-src blob:; "+
-			"form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
-
 	p.render(w, r, "settings", pageData{
 		Title:        "Settings",
 		Organisation: settings.Organisation,
@@ -340,9 +330,9 @@ func (p *Panel) regenerateDataKey(w http.ResponseWriter, r *http.Request, sess d
 	}
 	p.deps.Keyring.Replace(fresh)
 
-	// Every credential this server holds belongs to a plugin now, so this is
-	// the whole of the re-sealing. An operator who regenerated the key and then
-	// found their coaching silently off would have no way to connect the two.
+	// Every credential this server holds belongs to a plugin, so this is the
+	// whole of the re-sealing. An operator who regenerated the key and then
+	// found a plugin silently off would have no way to connect the two.
 	resealed, failed := p.resealPluginSecrets(ctx, old, fresh)
 	var notice string
 	switch {
@@ -404,10 +394,10 @@ func (p *Panel) beginForm(w http.ResponseWriter, r *http.Request) bool {
 // resealPluginSecrets moves every credential a plugin holds onto the new data
 // key, and reports how many moved and how many could not.
 //
-// A plugin's credentials are sealed with the same key as the core's, so
-// regenerating it without this would leave every plugin holding ciphertext
-// nothing can open — the coach would simply stop, with nothing on any page
-// connecting it to the button that was pressed.
+// A plugin's credentials are sealed with the data key, so regenerating it
+// without this would leave every plugin holding ciphertext nothing can open —
+// each would simply stop, with nothing on any page connecting that to the
+// button that was pressed.
 //
 // One that will not open is left exactly as it is rather than deleted. The core
 // drops its own unreadable credentials, because the page can then say plainly

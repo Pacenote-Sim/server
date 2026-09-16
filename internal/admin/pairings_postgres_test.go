@@ -93,9 +93,8 @@ func newPanel(t *testing.T, opts ...func(*admin.Deps)) *panel {
 	// panel refuses that machine's very next API request, and that it refuses
 	// nobody else's.
 	v1, err := api.New(ctx, api.Deps{
-		Log:     logging.Discard(),
-		Store:   store,
-		Keyring: auth.NewKeyring(nil),
+		Log:   logging.Discard(),
+		Store: store,
 	})
 	r.NoError(err)
 

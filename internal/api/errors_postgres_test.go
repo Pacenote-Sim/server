@@ -80,7 +80,6 @@ func TestEveryErrorCode(t *testing.T) {
 			body any
 		}{
 			{"the field relay, which is an enterprise feature", "/api/v1/field", wire.FieldReport{StintID: randomUUIDv7(t, startedAt)}},
-			{"the voice coach, with no voice service configured", "/api/v1/tts", wire.TTSRequest{Text: "Turn 4, more entry speed.", Lang: "en"}},
 		}
 		for _, tc := range cases {
 			t.Run(tc.name, func(t *testing.T) {
@@ -171,10 +170,10 @@ func TestEveryErrorCode(t *testing.T) {
 	t.Run("server_error is never a driver-readable fault", func(t *testing.T) {
 		t.Parallel()
 		r := require.New(t)
-		// The one server_error this server produces on purpose is the voice
-		// service failing, which is tested with a stub in TestOptionalFeatures.
-		// What is asserted here is the contract's own table: the code exists
-		// and pairs with a 5xx.
+		// This server calls no vendor, so the server_error a driver meets is
+		// the database being unreachable — TestEveryRouteSurvivesADatabaseThatStopped
+		// provokes that for real. What is asserted here is the contract's own
+		// table: the code exists and pairs with a 5xx.
 		r.Equal(http.StatusInternalServerError, wire.CodeServerError.HTTPStatus())
 		r.True(wire.CodeServerError.Retryable())
 	})

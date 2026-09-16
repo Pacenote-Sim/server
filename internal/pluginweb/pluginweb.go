@@ -71,8 +71,9 @@ type Deps struct {
 	// Settings is the organisation's own settings, for the public address a
 	// plugin builds links against.
 	Settings func(ctx context.Context) (config.Settings, error)
-	// Who resolves the caller from the server's sessions. It must never read a
-	// header the caller controls.
+	// Who resolves the caller from the server's own sessions and tokens — a
+	// browser's cookie, a client's device token — each checked against what
+	// the server holds. It must never take a header at its word.
 	Who func(*http.Request) Caller
 	// SignIn establishes a driver session for this browser, by the slug a
 	// plugin named. It is how a plugin that authenticates drivers hands the

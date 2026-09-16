@@ -8,16 +8,16 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/pacenote-sim/plugin"
 	"github.com/pacenote-sim/protocol/wire"
 	"github.com/pacenote-sim/server/internal/db"
 )
 
-// The two facts this server did not use to carry: where a lap was lost, and
-// what the car was set to. Both are measured by the client and copied here
-// rather than recomputed, so these tests are about the copy being exact — a
-// fact that changes on the way through is worse than one that never arrives,
-// because nothing downstream can tell.
+// The two documents the client sends and this server does not read: where a lap
+// was lost, and what the car was set to. Both are stored as they arrived and
+// handed to a plugin as they were stored. These tests are about the handover
+// being exact — a document that changes on the way through is worse than one
+// that never arrives, because nothing downstream can tell — and about this
+// server having no opinion of its own about what is inside.
 
 // worstCorner is the corner analysis the client's own test builds, in the units
 // the wire declares. Its twin is TestLapsToWire_CarriesTheCornerAnalysis in the
@@ -32,34 +32,53 @@ func worstCorner() wire.Corner {
 	}
 }
 
+// storedLap is a lap as encodeLaps writes it, with its corner analysis encoded
+// the way the column holds it.
+func storedLap(t *testing.T, number int, corners []wire.Corner) db.LapRow {
+	t.Helper()
+	raw, err := json.Marshal(cornersOrEmpty(corners))
+	require.NoError(t, err)
+	return db.LapRow{Number: number, LapMs: 91234, Kind: string(wire.KindClean), Corners: raw}
+}
+
+// decodeCorners reads the document back the way a plugin would, with the wire
+// types the protocol module publishes.
+func decodeCorners(t *testing.T, doc json.RawMessage) []wire.Corner {
+	t.Helper()
+	var out []wire.Corner
+	require.NoError(t, json.Unmarshal(doc, &out))
+	return out
+}
+
 // TestLapEvent_CarriesTheCorners is the server half of the round trip: what the
 // client detected reaches plugin.LapFacts.Corners unchanged.
 func TestLapEvent_CarriesTheCorners(t *testing.T) {
 	t.Parallel()
+
+	t.Run("the document is the one that was stored, byte for byte", func(t *testing.T) {
+		t.Parallel()
+		r := require.New(t)
+
+		row := storedLap(t, 7, []wire.Corner{worstCorner()})
+		e := lapEvent(slog.New(slog.DiscardHandler), testSession(), testStint(t), row, 90400)
+
+		r.NoError(e.Validate())
+		r.Equal(string(row.Corners), string(e.Lap.Corners),
+			"not re-encoded, not re-ordered, not read: the stored bytes are the fact")
+	})
 
 	t.Run("every measurement survives the crossing", func(t *testing.T) {
 		t.Parallel()
 		r := require.New(t)
 
 		sent := worstCorner()
-		e := lapEvent(slog.New(slog.DiscardHandler), testSession(), testStint(t), wire.Lap{
-			Number: 7, LapMs: 91234, Kind: wire.KindClean,
-			Corners: []wire.Corner{sent},
-		}, 90400)
+		e := lapEvent(slog.New(slog.DiscardHandler), testSession(), testStint(t),
+			storedLap(t, 7, []wire.Corner{sent}), 90400)
 
-		r.NoError(e.Validate())
-		r.Len(e.Lap.Corners, 1)
-
-		got := e.Lap.Corners[0]
-		r.Equal(sent.Turn, got.Turn)
-		r.Equal(sent.ApexPct, got.ApexPct)
-		r.Equal(sent.ApexKmh, got.ApexKmh)
-		r.Equal(sent.RefApexKmh, got.ReferenceApexKmh)
-		r.Equal(sent.DeficitKmh, got.DeficitKmh)
-		r.Equal(sent.BrakeAtApex, got.BrakeAtApex)
-		r.Equal(sent.ThrottleLag, got.ThrottleLag)
-		r.Equal(plugin.PatternEarlyApex, got.Pattern)
-		r.Equal(got.ReferenceApexKmh-got.ApexKmh, got.DeficitKmh,
+		got := decodeCorners(t, e.Lap.Corners)
+		r.Len(got, 1)
+		r.Equal(sent, got[0])
+		r.Equal(got[0].RefApexKmh-got[0].ApexKmh, got[0].DeficitKmh,
 			"the deficit is still the two speeds beside it after the crossing")
 	})
 
@@ -67,16 +86,14 @@ func TestLapEvent_CarriesTheCorners(t *testing.T) {
 		t.Parallel()
 		r := require.New(t)
 
-		e := lapEvent(slog.New(slog.DiscardHandler), testSession(), testStint(t), wire.Lap{
-			Number: 7, LapMs: 91234, Kind: wire.KindClean,
-			Corners: []wire.Corner{
-				{Turn: 3, ApexPct: 600, ApexKmh: 60, RefApexKmh: 80, DeficitKmh: 20},
-				{Turn: 1, ApexPct: 150, ApexKmh: 102, RefApexKmh: 110, DeficitKmh: 8},
-				{Turn: 4, ApexPct: 800, ApexKmh: 146, RefApexKmh: 150, DeficitKmh: 4},
-			},
-		}, 90400)
+		e := lapEvent(slog.New(slog.DiscardHandler), testSession(), testStint(t), storedLap(t, 7, []wire.Corner{
+			{Turn: 3, ApexPct: 600, ApexKmh: 60, RefApexKmh: 80, DeficitKmh: 20},
+			{Turn: 1, ApexPct: 150, ApexKmh: 102, RefApexKmh: 110, DeficitKmh: 8},
+			{Turn: 4, ApexPct: 800, ApexKmh: 146, RefApexKmh: 150, DeficitKmh: 4},
+		}), 90400)
 
-		turns := []int{e.Lap.Corners[0].Turn, e.Lap.Corners[1].Turn, e.Lap.Corners[2].Turn}
+		got := decodeCorners(t, e.Lap.Corners)
+		turns := []int{got[0].Turn, got[1].Turn, got[2].Turn}
 		r.Equal([]int{3, 1, 4}, turns, "worst first is the client's ranking and this server does not re-sort it")
 	})
 
@@ -84,23 +101,19 @@ func TestLapEvent_CarriesTheCorners(t *testing.T) {
 		t.Parallel()
 		r := require.New(t)
 
-		e := lapEvent(slog.New(slog.DiscardHandler), testSession(), testStint(t), wire.Lap{
-			Number: 2, LapMs: 92000, Kind: wire.KindClean,
-			Corners: []wire.Corner{{Turn: 1, ApexPct: 150, ApexKmh: 102, RefApexKmh: 110, DeficitKmh: 8}},
-		}, 90400)
+		e := lapEvent(slog.New(slog.DiscardHandler), testSession(), testStint(t), storedLap(t, 2, []wire.Corner{
+			{Turn: 1, ApexPct: 150, ApexKmh: 102, RefApexKmh: 110, DeficitKmh: 8},
+		}), 90400)
 
-		r.Empty(e.Lap.Corners[0].Pattern, "an empty pattern is an answer and must not become a guess")
+		r.Empty(decodeCorners(t, e.Lap.Corners)[0].Pattern, "an empty pattern is an answer and must not become a guess")
 	})
 
 	t.Run("a lap that arrived with no corners is given none", func(t *testing.T) {
 		t.Parallel()
 		r := require.New(t)
 
-		e := lapEvent(slog.New(slog.DiscardHandler), testSession(), testStint(t), wire.Lap{
-			Number: 1, LapMs: 95000, Kind: wire.KindOut,
-		}, 0)
-
-		r.Nil(e.Lap.Corners)
+		e := lapEvent(slog.New(slog.DiscardHandler), testSession(), testStint(t), storedLap(t, 1, nil), 0)
+		r.Nil(e.Lap.Corners, "the column holds an empty list, and the plugin is told nothing")
 
 		// The facts cross to a plugin as JSON, and a plugin that decodes an
 		// empty array where it expected an absent key is being told something
@@ -109,10 +122,26 @@ func TestLapEvent_CarriesTheCorners(t *testing.T) {
 		r.NoError(err)
 		r.NotContains(string(encoded), "corners")
 	})
+
+	t.Run("a field this server has never heard of reaches the plugin anyway", func(t *testing.T) {
+		t.Parallel()
+		r := require.New(t)
+
+		// The reason the document is not a struct. A client that starts
+		// measuring something new writes it into the analysis, and every
+		// plugin sees it, and this server was not edited.
+		row := db.LapRow{
+			Number: 9, LapMs: 91234, Kind: string(wire.KindClean),
+			Corners: []byte(`[{"turn":2,"apex_pct":300,"apex_kmh":90,"deficit_kmh":5,"brake_at_pct":288}]`),
+		}
+		e := lapEvent(slog.New(slog.DiscardHandler), testSession(), testStint(t), row, 90400)
+
+		r.Contains(string(e.Lap.Corners), `"brake_at_pct":288`)
+	})
 }
 
 // TestStintEvent_CarriesTheSetup is the same for the stint's half: the car the
-// driver actually drove, as it was stored, handed over as facts.
+// driver actually drove, as it was stored, handed over as it was stored.
 func TestStintEvent_CarriesTheSetup(t *testing.T) {
 	t.Parallel()
 
@@ -151,41 +180,27 @@ func TestStintEvent_CarriesTheSetup(t *testing.T) {
 		return s
 	}
 
+	t.Run("the document is the one that was stored, byte for byte", func(t *testing.T) {
+		t.Parallel()
+		r := require.New(t)
+
+		stint := stintWith(t, stored)
+		e := stintEvent(slog.New(slog.DiscardHandler), testSession(), stint, finalSummary())
+		r.NoError(e.Validate())
+		r.Equal(string(stint.Setup), string(e.Stint.Setup))
+	})
+
 	t.Run("every measurement survives the crossing", func(t *testing.T) {
 		t.Parallel()
 		r := require.New(t)
 
 		e := stintEvent(slog.New(slog.DiscardHandler), testSession(), stintWith(t, stored), finalSummary())
-		r.NoError(e.Validate())
-		r.NotNil(e.Stint.Setup)
 
-		got := e.Stint.Setup
-		r.Equal(4, got.UpdateCount)
-		r.Len(got.Tyres, 2)
-
-		lf, ok := got.TyreAt(plugin.WheelLF)
-		r.True(ok)
-		r.InDelta(165, lf.ColdKpa, 0)
-		r.InDelta(178.5, lf.HotKpa, 0)
-		r.InDelta(13.5, lf.HotKpa-lf.ColdKpa, 0,
-			"hot against cold is how far the cold setting has to move")
-		r.InDelta(12, lf.TempInnerC-lf.TempOuterC, 0,
+		var got wire.CarSetup
+		r.NoError(json.Unmarshal(e.Stint.Setup, &got))
+		r.Equal(stored, got)
+		r.InDelta(12, got.Tyres[0].TempInnerC-got.Tyres[0].TempOuterC, 0,
 			"the spread across the tread is the camber reading, and it is the point of all this")
-		r.InDelta(94, lf.TreadInnerPct, 0)
-
-		r.NotNil(got.RearWing)
-		r.Equal("7 hole", got.RearWing.Text)
-		r.InDelta(7, got.RearWing.Number, 0)
-
-		camber, ok := got.Value("Camber")
-		r.True(ok)
-		r.InDelta(-3.8, camber.Number, 0)
-		r.Equal("deg", camber.Unit)
-
-		arb, ok := got.Value("ArbSize")
-		r.True(ok)
-		r.Equal("Medium", arb.Text)
-		r.Zero(arb.Number, "a word has no number and must not become one")
 	})
 
 	t.Run("a stint stored with no setup says nothing about one", func(t *testing.T) {
@@ -200,24 +215,28 @@ func TestStintEvent_CarriesTheSetup(t *testing.T) {
 		r.NotContains(string(encoded), "setup")
 	})
 
-	t.Run("a stored document that cannot be read is an absent setup, not a broken stint", func(t *testing.T) {
+	t.Run("a stored null is the same as nothing stored", func(t *testing.T) {
 		t.Parallel()
 		r := require.New(t)
 
-		e := stintEvent(slog.New(slog.DiscardHandler), testSession(),
-			stintWith(t, []byte(`{"tyres": "not a list"}`)), finalSummary())
-
-		r.NoError(e.Validate(), "the stint still finished, and a debrief about it is worth more than none")
+		e := stintEvent(slog.New(slog.DiscardHandler), testSession(), stintWith(t, []byte(`null`)), finalSummary())
 		r.Nil(e.Stint.Setup)
-		r.Equal(94, e.Stint.ConsistencyPct, "the rest of the facts are untouched")
 	})
 
-	t.Run("a document that decodes to nothing is not a setup", func(t *testing.T) {
+	t.Run("a document this server would not have understood is handed over anyway", func(t *testing.T) {
 		t.Parallel()
 		r := require.New(t)
 
-		e := stintEvent(slog.New(slog.DiscardHandler), testSession(), stintWith(t, []byte(`{}`)), finalSummary())
-		r.Nil(e.Stint.Setup, "a plugin reading an empty setup would think it had been told something")
+		// This server does not read the setup, so it cannot judge it. Whether
+		// this is a setup is the plugin's to decide, and a server that dropped
+		// it for not understanding it would be deciding that for every plugin
+		// at once.
+		odd := []byte(`{"tyres": "not a list", "ride_height_mm": 54}`)
+		e := stintEvent(slog.New(slog.DiscardHandler), testSession(), stintWith(t, odd), finalSummary())
+
+		r.NoError(e.Validate(), "the stint still finished, and the rest of the facts are still good")
+		r.Equal(string(odd), string(e.Stint.Setup))
+		r.Equal(94, e.Stint.ConsistencyPct, "the rest of the facts are untouched")
 	})
 }
 

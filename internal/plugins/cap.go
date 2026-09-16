@@ -22,8 +22,8 @@ import (
 // would still have spent the money.
 //
 // It is per plugin rather than one number for the server. Two reasons: an
-// operator running a coach and a voice wants to know which one is costing them,
-// and a cap that is reached by one plugin should not silence the other.
+// operator running two plugins wants to know which one is costing them, and a
+// cap that is reached by one plugin should not silence the other.
 
 // The settings a plugin does not own. They live in the same table as the ones it
 // declares, and they are told apart by the leading underscore: the plugin

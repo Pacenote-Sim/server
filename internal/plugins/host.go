@@ -421,12 +421,12 @@ func (h *Host) Notify(ctx context.Context, e plugin.Event) {
 	}
 }
 
-// Ask puts a request to one plugin and waits for the answer.
+// Ask puts a request to one plugin and waits for the answer. It is what the
+// broker calls when one plugin asks another; the server itself asks nothing.
 //
 // The deadline is the request's own, or [Options.CallTimeout] when it carries
 // none. A plugin that misses it is skipped and reported, and the caller gets an
-// error rather than a late answer, so that it can use its own fallback: the
-// deterministic cue this product generates with no model at all.
+// error rather than a late answer, so that it can use its own fallback.
 //
 // The caller is told plainly which of the things that can go wrong did.
 // [ErrNoPlugin], [ErrUnavailable] and [ErrOverCap] are the host's; the plugin's
@@ -510,6 +510,35 @@ func (h *Host) List() []Status {
 	out := make([]Status, 0, len(instances))
 	for _, inst := range instances {
 		out = append(out, inst.status())
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
+}
+
+// Running is the manifest of every plugin that is running right now, by name.
+//
+// It is what a client is told about: not what is installed and not what the
+// operator configured, but what is answering. A plugin that is stopped, failed
+// or switched off has routes nothing serves, and telling a client about them
+// would be telling it to show a button that returns an error.
+//
+// The manifests come back as the plugins declared them. Which routes a client
+// may be told about is the caller's to decide, because it is a question about
+// the caller's audience and not about the plugin.
+func (h *Host) Running() []plugin.Manifest {
+	h.mu.RLock()
+	instances := make([]*instance, 0, len(h.instances))
+	for _, inst := range h.instances {
+		instances = append(instances, inst)
+	}
+	h.mu.RUnlock()
+
+	out := make([]plugin.Manifest, 0, len(instances))
+	for _, inst := range instances {
+		if inst.currentState() != StateRunning {
+			continue
+		}
+		out = append(out, inst.manifestSnapshot())
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out

@@ -184,7 +184,7 @@ func coachPlugin() plugins.Status {
 		Installed:        true,
 		Capabilities: plugin.Capabilities{
 			Events:          []plugin.EventKind{plugin.EventLapCompleted},
-			Requests:        []plugin.RequestKind{plugin.RequestDebrief},
+			Requests:        []plugin.RequestKind{"engineer.debrief"},
 			Network:         true,
 			ReadsDriverData: true,
 			Database:        true,

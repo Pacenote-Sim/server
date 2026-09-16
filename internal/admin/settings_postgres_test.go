@@ -119,9 +119,8 @@ func newSettingsPanel(t *testing.T, opts ...func(*admin.Deps)) *settingsPanel {
 	log := logging.New(logging.Options{Level: slog.LevelDebug, Output: p.logs})
 
 	v1, err := api.New(ctx, api.Deps{
-		Log:     log,
-		Store:   store,
-		Keyring: p.keyring,
+		Log:   log,
+		Store: store,
 	})
 	r.NoError(err)
 
@@ -137,10 +136,9 @@ func newSettingsPanel(t *testing.T, opts ...func(*admin.Deps)) *settingsPanel {
 			p.savedKeys.Add(1)
 			return nil
 		},
-		// No plugin host in this fixture, so the preview shows a server with
-		// no coach — which is what a server with no plugins is.
+		// The preview is built the way the API builds the real one.
 		Discovery: func(s config.Settings) wire.Discovery {
-			return api.Discovery(s, api.Features(nil, api.OpenKeys(s, p.keyring.Key())))
+			return api.Discovery(s, api.Features())
 		},
 	}
 	for _, opt := range opts {
@@ -386,7 +384,7 @@ func TestDiscoveryFollowsASettingsChange(t *testing.T) {
 
 	before := panel.discovery()
 	r.Equal("Iberian GT Championship", before.Name)
-	r.NotContains(before.Features, wire.FeatureCoach, "no plugin answers it, so no coaching feature")
+	r.ElementsMatch(api.Features(), before.Features, "the features are the core's and follow nothing an operator types")
 
 	_, csrf := panel.settingsPage()
 	r.Equal(http.StatusOK, panel.post("/admin/settings/identity", url.Values{
@@ -399,15 +397,15 @@ func TestDiscoveryFollowsASettingsChange(t *testing.T) {
 	r.Equal("CEGT", after.ShortName)
 	r.Equal("#FF3B30", after.Accent)
 
-	t.Run("the coach is not advertised by a server with no plugin running one", func(t *testing.T) {
+	t.Run("nothing in the settings can add a feature", func(t *testing.T) {
 		t.Parallel()
 		r := require.New(t)
 		panel := newSettingsPanel(t)
 
-		// Nothing in these settings can turn coaching on: the feature follows a
-		// plugin that answers, not a value an operator typed. A server that
-		// advertised a coach it had no way to deliver would be a client showing
-		// a button that returns nothing.
+		// A feature is a capability this server owns, and the community
+		// edition's three are unconditional. Nothing an operator types adds
+		// one, and nothing a plugin declares does either: a plugin is not a
+		// feature, and what is installed is GET /me's answer, not this one's.
 		_, csrf := panel.settingsPage()
 		r.Equal(http.StatusOK, panel.post("/admin/settings/limits", url.Values{
 			"csrf": {csrf}, "trace_points": {"300"}, "laps_per_request": {"50"},
@@ -415,8 +413,7 @@ func TestDiscoveryFollowsASettingsChange(t *testing.T) {
 			"max_body_bytes": {"2097152"},
 		}))
 		doc := panel.discovery()
-		r.NotContains(doc.Features, wire.FeatureCoach)
-		r.NotContains(doc.Features, wire.FeatureSetups)
+		r.ElementsMatch(api.Features(), doc.Features)
 	})
 
 	t.Run("limits reach the document too", func(t *testing.T) {

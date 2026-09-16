@@ -103,9 +103,8 @@ func TestTheSweepSurvivesADatabaseThatStopped(t *testing.T) {
 	r.NoError(store.Migrate(ctx))
 
 	a, err := api.New(ctx, api.Deps{
-		Log:     logging.New(logging.Options{Level: slog.LevelDebug, Output: logs}),
-		Store:   store,
-		Keyring: auth.NewKeyring(nil),
+		Log:   logging.New(logging.Options{Level: slog.LevelDebug, Output: logs}),
+		Store: store,
 	})
 	r.NoError(err)
 
@@ -148,10 +147,9 @@ func TestASweepThatClearsSomethingOut(t *testing.T) {
 	r.NoError(store.ExpirePairing(ctx, pairing.ID))
 
 	a, err := api.New(ctx, api.Deps{
-		Log:     logging.New(logging.Options{Level: slog.LevelDebug, Output: logs}),
-		Store:   store,
-		Keyring: auth.NewKeyring(nil),
-		Now:     func() time.Time { return time.Now().Add(72 * time.Hour) },
+		Log:   logging.New(logging.Options{Level: slog.LevelDebug, Output: logs}),
+		Store: store,
+		Now:   func() time.Time { return time.Now().Add(72 * time.Hour) },
 	})
 	r.NoError(err)
 

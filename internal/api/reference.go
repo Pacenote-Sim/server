@@ -14,8 +14,7 @@ import (
 // me" and the fallback below narrows it to whatever this server actually holds.
 const DefaultScope = wire.ScopeClass
 
-// getReference answers with the lap the coach's training mode compares a driver
-// against.
+// getReference answers with the lap a driver's own is compared against.
 //
 // Scope is a preference and not a demand. The server tries the scope asked for
 // and then the narrower ones, and says which it used, so a server with no class

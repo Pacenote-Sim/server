@@ -5,16 +5,12 @@ package api_test
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"net/http"
-	"strings"
-	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/pacenote-sim/plugin"
 	"github.com/pacenote-sim/protocol/wire"
 	"github.com/pacenote-sim/server/internal/api"
 	"github.com/pacenote-sim/server/internal/db"
@@ -22,10 +18,8 @@ import (
 
 // withFeatures builds a feature set for a harness: the community answer plus
 // whatever this test needs present.
-func withFeatures(extra ...wire.Feature) func(api.Answering, api.Keys) []wire.Feature {
-	return func(a api.Answering, k api.Keys) []wire.Feature {
-		return append(api.Features(a, k), extra...)
-	}
+func withFeatures(extra ...wire.Feature) func() []wire.Feature {
+	return func() []wire.Feature { return append(api.Features(), extra...) }
 }
 
 func sampleLiveSample(stintID string) wire.LiveSample {
@@ -98,7 +92,7 @@ func TestLive(t *testing.T) {
 		t.Parallel()
 		r := require.New(t)
 		h := newHarness(t, harnessOptions{
-			features: func(api.Answering, api.Keys) []wire.Feature {
+			features: func() []wire.Feature {
 				return []wire.Feature{wire.FeatureTelemetry, wire.FeatureReference}
 			},
 		})
@@ -189,160 +183,5 @@ func TestField(t *testing.T) {
 		res := h.do(request{method: http.MethodPost, path: "/api/v1/field", body: sampleFieldReport(id)})
 		r.Equal(http.StatusUnprocessableEntity, res.status, res.body)
 		r.Equal(api.IdempotencyHeader, res.envelope(t).Detail["header"])
-	})
-}
-
-// speaker is a plugin host that answers a request for audio however the test
-// says. It stands in for a voice plugin, which is where the vendor, the
-// credential and the engine's dialect all live now.
-type speaker struct {
-	audio     []byte
-	audioType string
-	err       error
-	asked     atomic.Int64
-	lastText  atomic.Pointer[string]
-}
-
-func (s *speaker) Notify(context.Context, plugin.Event) {}
-
-func (s *speaker) Ask(_ context.Context, r plugin.Request) (plugin.Response, error) {
-	s.asked.Add(1)
-	text := r.Text
-	s.lastText.Store(&text)
-	if s.err != nil {
-		return plugin.Response{}, s.err
-	}
-	return plugin.Response{Kind: r.Kind, Audio: s.audio, AudioType: s.audioType}, nil
-}
-
-func (s *speaker) Answering(kind plugin.RequestKind) []string {
-	if kind == plugin.RequestSpeak {
-		return []string{"voice"}
-	}
-	return nil
-}
-
-// TestTTS is the one endpoint whose answer is bytes. The server has no voice of
-// its own: it hands the line to whichever plugin answers and relays what comes
-// back, so what is tested here is the relaying and the refusing.
-func TestTTS(t *testing.T) {
-	t.Parallel()
-
-	const wav = "RIFF....WAVEfmt "
-	cue := wire.TTSRequest{Text: "Turn 4, more entry speed.", Lang: "en"}
-
-	t.Run("a plugin speaks and the audio is relayed", func(t *testing.T) {
-		t.Parallel()
-		r := require.New(t)
-
-		voice := &speaker{audio: []byte(wav), audioType: "audio/wav"}
-		h := newHarness(t, harnessOptions{plugins: voice})
-
-		res := h.do(request{
-			method: http.MethodPost, path: "/api/v1/tts", key: "tts-1", body: cue,
-		})
-		r.Equal(http.StatusOK, res.status, res.body)
-		r.Equal("audio/wav", res.headers.Get("Content-Type"))
-		r.Equal(wav, res.body)
-		r.EqualValues(1, voice.asked.Load())
-
-		// The plugin is given the line and nothing it has to parse out of
-		// something larger.
-		sent := voice.lastText.Load()
-		r.NotNil(sent)
-		r.Equal(cue.Text, *sent)
-	})
-
-	t.Run("a server with no voice plugin says so", func(t *testing.T) {
-		t.Parallel()
-		r := require.New(t)
-
-		// Nothing answers, so the feature is not advertised and the endpoint
-		// refuses. A client turns the button off rather than showing an error.
-		h := newHarness(t, harnessOptions{})
-		res := h.do(request{
-			method: http.MethodPost, path: "/api/v1/tts", key: "tts-none", body: cue,
-		})
-		r.Equal(http.StatusForbidden, res.status, res.body)
-		r.NotContains(res.body, "Anthropic")
-		r.Contains(res.body, "plugin")
-	})
-
-	t.Run("a plugin that is not configured yet", func(t *testing.T) {
-		t.Parallel()
-		r := require.New(t)
-
-		voice := &speaker{err: plugin.ErrNotConfigured}
-		h := newHarness(t, harnessOptions{plugins: voice})
-		res := h.do(request{
-			method: http.MethodPost, path: "/api/v1/tts", key: "tts-unconf", body: cue,
-		})
-		r.Equal(http.StatusForbidden, res.status, res.body)
-		r.Contains(res.body, "not been configured")
-	})
-
-	t.Run("a plugin that will not answer", func(t *testing.T) {
-		t.Parallel()
-		r := require.New(t)
-
-		voice := &speaker{err: errors.New("the vendor refused: invalid api key")}
-		h := newHarness(t, harnessOptions{plugins: voice})
-		res := h.do(request{
-			method: http.MethodPost, path: "/api/v1/tts", key: "tts-fail", body: cue,
-		})
-		r.Equal(http.StatusInternalServerError, res.status, res.body)
-		// The plugin's own words are not shown to a driver: they are about the
-		// operator's account and mean nothing in a car.
-		r.NotContains(res.body, "invalid api key")
-	})
-
-	t.Run("audio a client cannot play is refused rather than relayed", func(t *testing.T) {
-		t.Parallel()
-		r := require.New(t)
-
-		// The likeliest shape of this is a plugin passing on an HTML error page
-		// it did not notice. Relaying it would have the client try to play it.
-		voice := &speaker{audio: []byte("<html>rate limited</html>"), audioType: "text/html"}
-		h := newHarness(t, harnessOptions{plugins: voice})
-		res := h.do(request{
-			method: http.MethodPost, path: "/api/v1/tts", key: "tts-html", body: cue,
-		})
-		r.Equal(http.StatusInternalServerError, res.status, res.body)
-		r.NotContains(res.body, "<html>")
-	})
-
-	t.Run("a plugin that answers with nothing", func(t *testing.T) {
-		t.Parallel()
-		r := require.New(t)
-
-		voice := &speaker{audioType: "audio/wav"}
-		h := newHarness(t, harnessOptions{plugins: voice})
-		res := h.do(request{
-			method: http.MethodPost, path: "/api/v1/tts", key: "tts-empty", body: cue,
-		})
-		r.Equal(http.StatusInternalServerError, res.status, res.body)
-	})
-
-	t.Run("a cue with nothing to say, and one too long", func(t *testing.T) {
-		t.Parallel()
-		r := require.New(t)
-
-		voice := &speaker{audio: []byte(wav), audioType: "audio/wav"}
-		h := newHarness(t, harnessOptions{plugins: voice})
-
-		res := h.do(request{
-			method: http.MethodPost, path: "/api/v1/tts", key: "tts-blank",
-			body: wire.TTSRequest{Text: "   ", Lang: "en"},
-		})
-		r.Equal(http.StatusUnprocessableEntity, res.status, res.body)
-
-		res = h.do(request{
-			method: http.MethodPost, path: "/api/v1/tts", key: "tts-long",
-			body: wire.TTSRequest{Text: strings.Repeat("a", api.MaxTTSTextLen+1), Lang: "en"},
-		})
-		r.Equal(http.StatusUnprocessableEntity, res.status, res.body)
-
-		// Neither reached the plugin: a refusal here costs the operator nothing.
-		r.Zero(voice.asked.Load())
 	})
 }

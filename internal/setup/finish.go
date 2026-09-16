@@ -13,10 +13,9 @@ import (
 // confirmation, commits everything in one transaction, writes the configuration
 // file and then wakes the server.
 //
-// It used to ask for an Anthropic key here. It does not any more: the coaching
-// is a plugin, the plugin holds its own key, and asking for a vendor credential
-// during installation was asking an operator to make a decision before they had
-// seen the thing it was for.
+// It asks for no vendor credential. A plugin holds its own key, and asking for
+// one during installation was asking an operator to make a decision before
+// they had seen the thing it was for.
 func (w *Wizard) postFinish(rw http.ResponseWriter, r *http.Request) {
 	s, release := w.begin(rw, r, stepFinish)
 	if s == nil {

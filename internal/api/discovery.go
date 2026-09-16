@@ -17,15 +17,15 @@ import (
 const DiscoveryMaxAge = 5 * 60
 
 // getDiscovery serves the one unauthenticated document everything else follows
-// from. It is built from what the operator configured and what this
-// installation actually has running, so a server with no coaching plugin has no
-// coaching features in it and a client reading it turns those buttons off.
+// from. It is built from what the operator configured. What is installed beside
+// the core is not in it: that is a question for a paired client, and GET /me
+// answers it.
 func (a *API) getDiscovery(w http.ResponseWriter, r *http.Request) {
 	if err := a.current(r.Context()); err != nil {
 		a.deps.Log.LogAttrs(r.Context(), slog.LevelWarn,
 			"the settings could not be read, so discovery may be stale", slog.Any("error", err))
 	}
-	settings, features, _, _ := a.snapshot()
+	settings, features, _ := a.snapshot()
 
 	doc := settings.Discovery(features, MinClient)
 	doc.PrivacyURI = settings.BaseURL() + "/privacy"

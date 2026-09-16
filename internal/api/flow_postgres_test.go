@@ -153,7 +153,7 @@ func TestMe(t *testing.T) {
 		r.Nil(me.Team, "a community driver drives alone")
 		r.True(me.Has(wire.FeatureTelemetry))
 		r.True(me.Has(wire.FeatureReference))
-		r.False(me.Has(wire.FeatureTTS), "no voice service is configured here")
+		r.Empty(me.Plugins, "nothing is installed on a fresh installation, and the key is there to say so")
 	})
 
 	t.Run("records the machine as used", func(t *testing.T) {

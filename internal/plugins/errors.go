@@ -19,8 +19,7 @@ var (
 	// ErrOverCap is the operator's daily token cap having been reached. The
 	// plugin is not called at all — not called and truncated, not called and
 	// refused by the vendor — and the caller is told so that it falls back to
-	// whatever it does without a model. The driver hears slightly plainer
-	// coaching and nothing else.
+	// whatever it does without that plugin, and nothing else breaks.
 	ErrOverCap = errors.New("plugins: the daily token cap has been reached")
 
 	// ErrClosed is the host having been shut down.

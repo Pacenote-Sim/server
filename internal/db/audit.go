@@ -29,7 +29,8 @@ const (
 	// [ActionSettingsVoice] nothing writes it now: the core stores no
 	// credential, and clearing a plugin's is recorded against the plugin.
 	ActionSettingsKeyRemoved = "settings.key_removed"
-	// ActionVoiceTested is the Test voice button.
+	// ActionVoiceTested was the Test voice button, which left with the voice.
+	// Kept so an operator's older audit rows still read as what they were.
 	ActionVoiceTested = "settings.voice_tested"
 	// ActionDataKeyRegenerated is the data key being replaced.
 	ActionDataKeyRegenerated = "danger.data_key_regenerated"

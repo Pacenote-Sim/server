@@ -92,19 +92,19 @@ func TestHostRunsAPlugin(t *testing.T) {
 		t.Parallel()
 		r := require.New(t)
 
-		res, err := h.host.Ask(t.Context(), "testplugin", cueRequest())
+		res, err := h.host.Ask(t.Context(), "testplugin", echoRequest("testplugin"))
 		r.NoError(err)
-		r.Equal(plugin.RequestCueTraining, res.Kind)
-		r.Contains(res.Text, "Right", "the operator's setting reached the plugin")
-		r.Contains(res.Text, "Turn 4", "the facts reached the plugin")
+		r.Equal(plugin.RequestKind("testplugin.echo"), res.Kind)
+		r.Contains(string(res.Payload), "Right", "the operator's setting reached the plugin")
+		r.Contains(string(res.Payload), `"turn":4`, "the question reached the plugin")
+		r.Contains(string(res.Payload), `"from":"test"`, "and who asked")
 		r.Equal(int64(400), res.Usage.Total())
-		r.Equal("testplugin/1", res.PromptVersion)
 	})
 
 	t.Run("the plugins answering a kind can be found without knowing the name", func(t *testing.T) {
 		t.Parallel()
 		r := require.New(t)
-		r.Equal([]string{"testplugin"}, h.host.Answering(plugin.RequestSetup))
+		r.Equal([]string{"testplugin"}, h.host.Answering("testplugin.ask"))
 		r.Empty(h.host.Answering("cue.nonsense"))
 	})
 }
@@ -139,8 +139,8 @@ func TestHostRefusesToStart(t *testing.T) {
 			plugin: "typo",
 			install: func(t *testing.T, h *harness) {
 				t.Helper()
-				installRaw(t, h.dir, "typo", `{"name":"typo","version":"1","author":"a","description":"d",
-					"interface_version":1,"capabilitys":{"events":["lap.completed"]}}`)
+				installRaw(t, h.dir, "typo", fmt.Sprintf(`{"name":"typo","version":"1","author":"a","description":"d",
+					"interface_version":%d,"capabilitys":{"events":["lap.completed"]}}`, plugin.InterfaceVersion))
 			},
 			contains: []string{"is not readable"},
 		},
@@ -149,8 +149,8 @@ func TestHostRefusesToStart(t *testing.T) {
 			plugin: "curious",
 			install: func(t *testing.T, h *harness) {
 				t.Helper()
-				installRaw(t, h.dir, "curious", `{"name":"curious","version":"1","author":"a","description":"d",
-					"interface_version":1,"capabilities":{"events":["driver.paired"]}}`)
+				installRaw(t, h.dir, "curious", fmt.Sprintf(`{"name":"curious","version":"1","author":"a","description":"d",
+					"interface_version":%d,"capabilities":{"events":["driver.paired"]}}`, plugin.InterfaceVersion))
 			},
 			contains: []string{"is not an event this server carries"},
 		},
@@ -199,8 +199,8 @@ func TestHostRefusesToStart(t *testing.T) {
 			plugin: "empty",
 			install: func(t *testing.T, h *harness) {
 				t.Helper()
-				raw := `{"name":"empty","version":"1","author":"a","description":"d","interface_version":1,
-					"binary":"testplugin","capabilities":{"events":["lap.completed"]}}`
+				raw := fmt.Sprintf(`{"name":"empty","version":"1","author":"a","description":"d","interface_version":%d,
+					"binary":"testplugin","capabilities":{"events":["lap.completed"]}}`, plugin.InterfaceVersion)
 				installRaw(t, h.dir, "empty", raw)
 			},
 			contains: []string{"there is no"},
@@ -239,9 +239,9 @@ func TestHostRefusesToStart(t *testing.T) {
 				r.Contains(stored.LastError, want)
 			}
 
-			res, err := h.host.Ask(t.Context(), "testplugin", cueRequest())
+			res, err := h.host.Ask(t.Context(), "testplugin", echoRequest("testplugin"))
 			r.NoError(err, "the host went on working")
-			r.NotEmpty(res.Text)
+			r.NotEmpty(res.Payload)
 		})
 	}
 }
@@ -278,11 +278,11 @@ func TestPluginCrashesOnStart(t *testing.T) {
 	eventually(t, "the good plugin to start", func() bool {
 		return stateOf(h.host, "testplugin") == plugins.StateRunning
 	})
-	res, err := h.host.Ask(t.Context(), "testplugin", cueRequest())
+	res, err := h.host.Ask(t.Context(), "testplugin", echoRequest("testplugin"))
 	r.NoError(err)
-	r.NotEmpty(res.Text)
+	r.NotEmpty(res.Payload)
 
-	_, err = h.host.Ask(t.Context(), "suicidal", cueRequest())
+	_, err = h.host.Ask(t.Context(), "suicidal", echoRequest("suicidal"))
 	r.ErrorIs(err, plugins.ErrUnavailable)
 }
 
@@ -299,7 +299,7 @@ func TestPluginCrashesMidCall(t *testing.T) {
 	eventually(t, "the plugin to start", func() bool { return stateOf(h.host, "testplugin") == plugins.StateRunning })
 
 	misbehave(t, dir, behaviour{CrashAt: "answer", ExitCode: 2})
-	_, err := h.host.Ask(t.Context(), "testplugin", cueRequest())
+	_, err := h.host.Ask(t.Context(), "testplugin", echoRequest("testplugin"))
 	r.Error(err, "the caller is told there was no answer rather than waiting")
 
 	// The host notices and brings it back, and the caller's next attempt works.
@@ -309,9 +309,9 @@ func TestPluginCrashesMidCall(t *testing.T) {
 			stateOf(h.host, "testplugin") == plugins.StateRunning
 	})
 
-	res, err := h.host.Ask(t.Context(), "testplugin", cueRequest())
+	res, err := h.host.Ask(t.Context(), "testplugin", echoRequest("testplugin"))
 	r.NoError(err)
-	r.NotEmpty(res.Text)
+	r.NotEmpty(res.Payload)
 }
 
 // TestPluginMissesItsDeadline. A cue that arrives after the corner is worse
@@ -332,7 +332,7 @@ func TestPluginMissesItsDeadline(t *testing.T) {
 	misbehave(t, dir, behaviour{Hang: "30s"})
 
 	// The caller stops waiting at the deadline it set.
-	req := cueRequest()
+	req := echoRequest("testplugin")
 	req.Deadline = time.Now().Add(200 * time.Millisecond)
 
 	start := time.Now()
@@ -349,9 +349,9 @@ func TestPluginMissesItsDeadline(t *testing.T) {
 	behaveNormally(t, dir)
 	r.Equal(plugins.StateRunning, stateOf(h.host, "testplugin"))
 
-	res, err := h.host.Ask(t.Context(), "testplugin", cueRequest())
+	res, err := h.host.Ask(t.Context(), "testplugin", echoRequest("testplugin"))
 	r.NoError(err)
-	r.NotEmpty(res.Text)
+	r.NotEmpty(res.Payload)
 }
 
 // TestOverTheCapThePluginIsNotCalled. The cap belongs to the host and not to the
@@ -377,15 +377,15 @@ func TestOverTheCapThePluginIsNotCalled(t *testing.T) {
 
 	// Under the cap it is called.
 	h.store.setSpent(capTokens - 1)
-	res, err := h.host.Ask(t.Context(), "testplugin", cueRequest())
+	res, err := h.host.Ask(t.Context(), "testplugin", echoRequest("testplugin"))
 	r.NoError(err)
-	r.NotEmpty(res.Text)
+	r.NotEmpty(res.Payload)
 
 	// At the cap it is not, and nothing is spent finding that out.
 	h.store.setSpent(capTokens)
 	before := len(h.store.calls())
 
-	_, err = h.host.Ask(t.Context(), "testplugin", cueRequest())
+	_, err = h.host.Ask(t.Context(), "testplugin", echoRequest("testplugin"))
 	r.ErrorIs(err, plugins.ErrOverCap)
 	r.ErrorContains(err, "1000")
 	r.Len(h.store.calls(), before, "nothing was spent, because nothing was called")
@@ -407,7 +407,7 @@ func TestACapThatCannotBeReadRefuses(t *testing.T) {
 	// The settings this plugin's cap lives in cannot be read.
 	h.store.failSettings = errors.New("the database is not answering")
 
-	_, err := h.host.Ask(t.Context(), "testplugin", cueRequest())
+	_, err := h.host.Ask(t.Context(), "testplugin", echoRequest("testplugin"))
 	r.ErrorIs(err, plugins.ErrOverCap)
 }
 
@@ -424,7 +424,7 @@ func TestACapThatIsNotANumberRefuses(t *testing.T) {
 
 	r.NoError(h.store.SavePluginSetting(t.Context(), "testplugin", plugins.SettingDailyCap, "lots"))
 
-	_, err := h.host.Ask(t.Context(), "testplugin", cueRequest())
+	_, err := h.host.Ask(t.Context(), "testplugin", echoRequest("testplugin"))
 	r.ErrorIs(err, plugins.ErrOverCap)
 	r.ErrorContains(err, "not a number")
 }
@@ -447,13 +447,13 @@ func TestOnePluginsCapDoesNotSilenceAnother(t *testing.T) {
 	r.NoError(h.host.SetDailyCap(t.Context(), "testplugin", 1))
 	h.store.setSpent(1_000)
 
-	_, err := h.host.Ask(t.Context(), "testplugin", cueRequest())
+	_, err := h.host.Ask(t.Context(), "testplugin", echoRequest("testplugin"))
 	r.ErrorIs(err, plugins.ErrOverCap)
 
 	// The other has no cap and is called.
-	res, err := h.host.Ask(t.Context(), "otherplugin", cueRequest())
+	res, err := h.host.Ask(t.Context(), "otherplugin", echoRequest("otherplugin"))
 	r.NoError(err, "one plugin at its cap silenced another that had none")
-	r.NotEmpty(res.Text)
+	r.NotEmpty(res.Payload)
 }
 
 // TestASecretNeverReachesALogLine is the promise the sealed-credentials
@@ -477,10 +477,10 @@ func TestASecretNeverReachesALogLine(t *testing.T) {
 	r.NoError(h.host.Discover(t.Context()))
 	eventually(t, "the plugin to start", func() bool { return stateOf(h.host, "testplugin") == plugins.StateRunning })
 
-	res, err := h.host.Ask(t.Context(), "testplugin", cueRequest())
+	res, err := h.host.Ask(t.Context(), "testplugin", echoRequest("testplugin"))
 	r.NoError(err)
-	r.Contains(res.Text, "api_key", "the plugin was handed the credential")
-	r.NotContains(res.Text, secret, "and did not send it back")
+	r.Contains(string(res.Payload), "api_key", "the plugin was handed the credential")
+	r.NotContains(string(res.Payload), secret, "and did not send it back")
 
 	eventually(t, "the plugin's leak to be captured", func() bool {
 		return strings.Contains(statusOf(t, h.host, "testplugin").LastOutput, "leaking api_key")
@@ -526,7 +526,7 @@ func TestHostRefusesWhatItShouldNotAsk(t *testing.T) {
 		t.Parallel()
 		r := require.New(t)
 
-		_, err := h.host.Ask(t.Context(), "nosuchplugin", cueRequest())
+		_, err := h.host.Ask(t.Context(), "nosuchplugin", echoRequest("nosuchplugin"))
 		r.ErrorIs(err, plugins.ErrNoPlugin)
 	})
 
@@ -536,14 +536,14 @@ func TestHostRefusesWhatItShouldNotAsk(t *testing.T) {
 
 		limited := newHarness(t)
 		m := manifestFor("testplugin")
-		m.Capabilities.Requests = []plugin.RequestKind{plugin.RequestSetup}
+		m.Capabilities.Requests = []plugin.RequestKind{"testplugin.ask"}
 		install(t, limited.dir, "testplugin", m)
 		r.NoError(limited.host.Discover(t.Context()))
 		eventually(t, "the plugin to start", func() bool {
 			return stateOf(limited.host, "testplugin") == plugins.StateRunning
 		})
 
-		_, err := limited.host.Ask(t.Context(), "testplugin", cueRequest())
+		_, err := limited.host.Ask(t.Context(), "testplugin", echoRequest("testplugin"))
 		r.ErrorIs(err, plugin.ErrUnsupported)
 	})
 
@@ -559,7 +559,7 @@ func TestHostRefusesWhatItShouldNotAsk(t *testing.T) {
 			return stateOf(quiet.host, "testplugin") == plugins.StateRunning
 		})
 
-		_, err := quiet.host.Ask(t.Context(), "testplugin", cueRequest())
+		_, err := quiet.host.Ask(t.Context(), "testplugin", echoRequest("testplugin"))
 		r.ErrorIs(err, plugin.ErrNoAnswer, "silence is an answer a caller falls back from, not a failure")
 	})
 
@@ -590,9 +590,9 @@ func TestDiscoverIsSafeToRepeat(t *testing.T) {
 	r.Equal(plugins.StateRunning, after.State)
 	r.Equal(before.Restarts, after.Restarts, "a working plugin is not restarted because somebody pressed rescan")
 
-	res, err := h.host.Ask(t.Context(), "testplugin", cueRequest())
+	res, err := h.host.Ask(t.Context(), "testplugin", echoRequest("testplugin"))
 	r.NoError(err)
-	r.NotEmpty(res.Text)
+	r.NotEmpty(res.Payload)
 }
 
 // TestClosedHostAnswersNothing, because a shutdown must not leave a caller
@@ -609,7 +609,7 @@ func TestClosedHostAnswersNothing(t *testing.T) {
 	h.host.Close()
 	h.host.Close() // twice, because a shutdown path gets called twice.
 
-	_, err := h.host.Ask(t.Context(), "testplugin", cueRequest())
+	_, err := h.host.Ask(t.Context(), "testplugin", echoRequest("testplugin"))
 	r.ErrorIs(err, plugins.ErrClosed)
 
 	// And an event dispatched after the door closed goes nowhere rather than
@@ -656,7 +656,7 @@ func TestSettingsRefusedAtTheBoundary(t *testing.T) {
 				return stateOf(h.host, "testplugin") == plugins.StateRunning
 			})
 
-			_, err := h.host.Ask(t.Context(), "testplugin", cueRequest())
+			_, err := h.host.Ask(t.Context(), "testplugin", echoRequest("testplugin"))
 			r.ErrorIs(err, tc.wantErr)
 			r.ErrorContains(err, tc.text)
 		})
@@ -681,7 +681,7 @@ func TestACredentialThatWillNotOpen(t *testing.T) {
 	r.NoError(h.host.Discover(t.Context()))
 	eventually(t, "the plugin to start", func() bool { return stateOf(h.host, "testplugin") == plugins.StateRunning })
 
-	_, err := h.host.Ask(t.Context(), "testplugin", cueRequest())
+	_, err := h.host.Ask(t.Context(), "testplugin", echoRequest("testplugin"))
 	r.ErrorIs(err, plugin.ErrNotConfigured)
 	r.ErrorContains(err, "enter it again")
 }
@@ -710,7 +710,7 @@ func TestAPluginWhoseFilesHaveGone(t *testing.T) {
 	r.Equal(string(plugins.StateStopped), stored.State)
 	r.Contains(stored.LastError, "no longer in the plugin directory")
 
-	res, err := h.host.Ask(t.Context(), "testplugin", cueRequest())
+	res, err := h.host.Ask(t.Context(), "testplugin", echoRequest("testplugin"))
 	r.NoError(err)
-	r.NotEmpty(res.Text)
+	r.NotEmpty(res.Payload)
 }

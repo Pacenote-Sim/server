@@ -11,11 +11,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/pacenote-sim/plugin"
 	"github.com/pacenote-sim/protocol/wire"
-	"github.com/pacenote-sim/server/internal/auth"
 	"github.com/pacenote-sim/server/internal/config"
 	"github.com/pacenote-sim/server/internal/db"
+	"github.com/pacenote-sim/server/internal/httpx"
 )
 
 func TestOlderThan(t *testing.T) {
@@ -73,93 +72,22 @@ func TestScopePreference(t *testing.T) {
 	}
 }
 
+// TestFeatures pins the community edition's answer: the three core features,
+// unconditionally, and nothing that follows a plugin. Whether a coach is
+// installed is not a feature — it is [wire.Me.Plugins], and TestInstalled
+// covers that.
 func TestFeatures(t *testing.T) {
 	t.Parallel()
-	cases := []struct {
-		name    string
-		keys    Keys
-		answers []plugin.RequestKind
-		present []wire.Feature
-		absent  []wire.Feature
-	}{
-		{
-			name:    "a server with no plugins and nothing configured",
-			present: []wire.Feature{wire.FeatureTelemetry, wire.FeatureReference, wire.FeatureLive},
-			absent:  []wire.Feature{wire.FeatureCoach, wire.FeatureSetups, wire.FeatureTTS},
-		},
-		{
-			name:    "a plugin answering cues",
-			answers: []plugin.RequestKind{plugin.RequestCueTraining},
-			present: []wire.Feature{wire.FeatureCoach},
-			absent:  []wire.Feature{wire.FeatureSetups, wire.FeatureTTS},
-		},
-		{
-			// The two are advertised separately because a plugin may answer
-			// one and not the other, and a client that was told it had setup
-			// advice shows a button that returns nothing.
-			name:    "a plugin answering setup advice and not cues",
-			answers: []plugin.RequestKind{plugin.RequestSetup},
-			present: []wire.Feature{wire.FeatureSetups},
-			absent:  []wire.Feature{wire.FeatureCoach},
-		},
-		{
-			name:    "a plugin answering everything",
-			answers: []plugin.RequestKind{plugin.RequestCueRace, plugin.RequestCueTraining, plugin.RequestSetup},
-			present: []wire.Feature{wire.FeatureCoach, wire.FeatureSetups},
-		},
-		{
-			name:    "a plugin that speaks",
-			answers: []plugin.RequestKind{plugin.RequestSpeak},
-			present: []wire.Feature{wire.FeatureTTS},
-			absent:  []wire.Feature{wire.FeatureCoach, wire.FeatureSetups},
-		},
-		{
-			// A plugin that coaches but does not speak. The two are separate
-			// features because they are separate plugins, and a client told it
-			// had a voice would show a button that returns nothing.
-			name:    "a coach with nothing to speak it",
-			answers: []plugin.RequestKind{plugin.RequestCueRace},
-			present: []wire.Feature{wire.FeatureCoach},
-			absent:  []wire.Feature{wire.FeatureTTS},
-		},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			r := require.New(t)
-			doc := wire.Discovery{Features: Features(answering(tc.answers), tc.keys)}
-			for _, f := range tc.present {
-				r.True(doc.Has(f), "%s should be present", f)
-			}
-			for _, f := range tc.absent {
-				r.False(doc.Has(f), "%s should be absent", f)
-			}
-			for _, f := range EnterpriseFeatures {
-				r.False(doc.Has(f), "%s is an enterprise feature and is never in this build", f)
-			}
-		})
-	}
-}
+	r := require.New(t)
 
-// answering is a plugin host that answers these kinds and no others. A nil slice
-// is a server with no plugin host at all, which is not the same as one whose
-// plugins answer nothing — and both have no coach.
-func answering(kinds []plugin.RequestKind) Answering {
-	if kinds == nil {
-		return nil
+	doc := wire.Discovery{Features: Features()}
+	for _, f := range []wire.Feature{wire.FeatureTelemetry, wire.FeatureReference, wire.FeatureLive} {
+		r.True(doc.Has(f), "%s is what this server is for", f)
 	}
-	return fakeAnswering(kinds)
-}
-
-type fakeAnswering []plugin.RequestKind
-
-func (f fakeAnswering) Answering(kind plugin.RequestKind) []string {
-	for _, k := range f {
-		if k == kind {
-			return []string{"someplugin"}
-		}
+	for _, f := range EnterpriseFeatures {
+		r.False(doc.Has(f), "%s is an enterprise feature and is never in this build", f)
 	}
-	return nil
+	r.Len(doc.Features, 3, "and there is nothing else: a plugin is not a feature")
 }
 
 // TestLimiterComesFromTheDiscoveryLimits is D-7's guarantee in a test: the
@@ -247,7 +175,7 @@ func TestBearer(t *testing.T) {
 			if tc.header != "" {
 				req.Header.Set("Authorization", tc.header)
 			}
-			got, ok := bearer(req)
+			got, ok := httpx.BearerToken(req)
 			r.Equal(tc.ok, ok)
 			r.Equal(tc.want, got)
 		})
@@ -341,11 +269,8 @@ func TestMessagesFollowTheHouseStyle(t *testing.T) {
 		"lap conflict":      msgLapConflict,
 		"server error":      msgServerError,
 		"unavailable again": msgUnavailableAgain,
-		"tts unavailable":   msgTTSUnavailable,
-		"tts failed":        msgTTSFailed,
 		"field unavailable": msgFieldUnavailable,
 		"live unavailable":  msgLiveUnavailable,
-		"coach unavailable": msgCoachUnavailable,
 	}
 	for name, message := range messages {
 		t.Run(name, func(t *testing.T) {
@@ -391,23 +316,6 @@ func TestPlural(t *testing.T) {
 			require.New(t).Equal(tc.want, plural(tc.n, "second"))
 		})
 	}
-}
-
-// TestOpenKeysTreatsAnUnreadableKeyAsAbsent is D-8's honest answer: the data
-// directory was lost and the database survived, so the feature is off until the
-// operator enters the key again rather than failing one call at a time.
-func TestOpenKeysTreatsAnUnreadableKeyAsAbsent(t *testing.T) {
-	t.Parallel()
-	r := require.New(t)
-
-	// This server holds no vendor credential of any kind: the coaching key went
-	// with the coaching and the voice key went with the voice, and both belong
-	// to a plugin now. OpenKeys stays as the seam a build with credentials of
-	// its own would use, and in this one it opens nothing.
-	key, err := auth.NewSecretKey()
-	r.NoError(err)
-	r.Equal(Keys{}, OpenKeys(config.Settings{}, key))
-	r.Equal(Keys{}, OpenKeys(config.Settings{}, nil))
 }
 
 // TestInvalidateKeepsTheLimitersBuckets is the rule the settings page depends
@@ -473,7 +381,7 @@ func TestInvalidateKeepsTheLimitersBuckets(t *testing.T) {
 			// directly: the database is not what this test is about.
 			next := stored
 			tc.change(&next)
-			a.applyLoaded(next, Keys{}, Features(nil, Keys{}), time.Now())
+			a.applyLoaded(next, Features(), time.Now())
 
 			if tc.rebuilt {
 				r.NotSame(before, a.limiter, "new limits are a new limiter")
@@ -549,28 +457,6 @@ func TestTheFieldRelayArmsOneClientAtATime(t *testing.T) {
 	now = now.Add(quiet + time.Second)
 	r.True(f.report("spa/race", second, wire.FieldReport{}, quiet),
 		"a session stayed armed to a client that had gone away")
-}
-
-// The bearer-token comparison and the whitespace around it.
-//
-// It is written out by hand rather than taken from strings because it is on the
-// path of every authenticated request, and because the scheme is ASCII: the
-// Unicode case folding in the standard library would fold characters that
-// cannot appear in an HTTP scheme and would cost more doing it.
-func TestComparingTheAuthorizationScheme(t *testing.T) {
-	t.Parallel()
-	r := require.New(t)
-
-	r.True(equalFold("Bearer", "bearer"))
-	r.True(equalFold("BEARER", "bearer"))
-	r.True(equalFold("", ""))
-	r.False(equalFold("Bearer", "Basic"))
-	r.False(equalFold("Bearer", "Bear"), "a prefix is not a match")
-	r.False(equalFold("bearer", "bearex"))
-
-	r.Equal("token", trimSpace("  \ttoken \t "))
-	r.Empty(trimSpace(" \t "))
-	r.Equal("a b", trimSpace("a b"))
 }
 
 // A server whose published limits say nothing still caps every body. The number

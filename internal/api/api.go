@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/pacenote-sim/protocol/wire"
-	"github.com/pacenote-sim/server/internal/auth"
 	"github.com/pacenote-sim/server/internal/config"
 	"github.com/pacenote-sim/server/internal/db"
 	"github.com/pacenote-sim/server/internal/httpx"
@@ -37,40 +36,34 @@ type Deps struct {
 	Log *slog.Logger
 	// Store is the database.
 	Store *db.Store
-	// Keyring holds the data key that opens the operator's sealed
-	// credentials. It is a keyring rather than a key because an operator can
-	// regenerate the data key in the admin panel while the server runs, and a
-	// key captured here would leave every sealed value unreadable until a
-	// restart. A nil keyring, or one holding no key, is the language-model and
-	// voice features being off.
-	Keyring *auth.Keyring
 	// Now is the clock, injectable for tests.
 	Now func() time.Time
-	// Features computes what this installation has, from what the plugins
-	// answer and what the operator has configured. nil means [Features], which
+	// Features computes what this installation has. nil means [Features], which
 	// is the community edition's answer; it is a field so that a build with
 	// more in it changes one function rather than every gate.
-	Features func(Answering, Keys) []wire.Feature
+	Features func() []wire.Feature
 	// OnRequest is called when a route finishes, with the route pattern rather
 	// than the path so that a metric does not grow a series per driver. nil
 	// means nothing is measured.
 	OnRequest func(route string, status int, took time.Duration)
 	// Plugins receives the events plugins react to — a lap completed, a stint
-	// finished — and says which requests anything will answer, which is what
-	// the discovery document advertises. nil is a server with no plugin host,
-	// which is every server built without one and every test that does not
-	// care; it has no coach and says so.
+	// finished — and, when it also implements [Running], says what is running,
+	// which is what GET /me tells a client. nil is a server with no plugin
+	// host, which is every server built without one and every test that does
+	// not care; it has no plugins and says so.
 	Plugins EventSink
 }
 
 // API serves version 1.
 type API struct {
 	deps Deps
+	// devices is the store as the token path sees it: the deps' store, or a
+	// stand-in in a test that has no database.
+	devices deviceLookup
 
 	mu        sync.RWMutex
 	settings  config.Settings
 	features  []wire.Feature
-	keys      Keys
 	readAt    time.Time
 	limiter   *Limiter
 	touched   map[int64]time.Time
@@ -98,6 +91,7 @@ func New(ctx context.Context, d Deps) (*API, error) {
 	}
 	a := &API{
 		deps:    d,
+		devices: d.Store,
 		touched: make(map[int64]time.Time),
 		live:    newLiveState(d.Now),
 		field:   newFieldState(d.Now),
@@ -115,9 +109,9 @@ func New(ctx context.Context, d Deps) (*API, error) {
 //   - PUT /stints/{id}, POST /stints/{id}/laps and PUT /stints/{id}/summary are
 //     backed by the idempotency table. They are what the client's offline queue
 //     drains, so a retry has to be safe however it failed the first time.
-//   - POST /field and POST /tts require the header and are not replayed. A
-//     field report is a snapshot of this instant and replaying a stale one
-//     would be worse than refusing; audio is cached by the client already.
+//   - POST /field requires the header and is not replayed. A field report is
+//     a snapshot of this instant, and replaying a stale one would be worse
+//     than refusing.
 //   - POST /live carries no key. The contract's own exception: it is never
 //     retried, so a key on a call made once a second would be overhead for a
 //     guarantee nobody uses.
@@ -138,7 +132,6 @@ func (a *API) Routes(mux *http.ServeMux) {
 
 	a.route(mux, "POST "+Prefix+"/live", a.authed(ClassLive, a.postLive))
 	a.route(mux, "POST "+Prefix+"/field", a.authed(ClassField, a.postField))
-	a.route(mux, "POST "+Prefix+"/tts", a.authed(ClassTTS, a.postTTS))
 
 	// Anything else under the prefix is a client talking to a version of this
 	// API that does not exist, and it must get the envelope rather than the
@@ -162,7 +155,6 @@ type session struct {
 	driver   db.Driver
 	features []wire.Feature
 	settings config.Settings
-	keys     Keys
 }
 
 // has reports whether this driver may use the feature here. It is the two-sided
@@ -177,7 +169,7 @@ func (s session) has(f wire.Feature) bool {
 	return false
 }
 
-// current re-reads the settings, features, keys and limiter if the held ones
+// current re-reads the settings, features and limiter if the held ones
 // have aged past [settingsTTL]. A read that fails leaves the last good answer
 // in place, because a database hiccup must not turn every feature off for
 // everyone; the caller logs it and carries on with what it has.
@@ -194,30 +186,7 @@ func (a *API) current(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	keys := OpenKeys(loaded, a.deps.Keyring.Key())
-	features := a.deps.Features(a.answering(), keys)
-
-	a.applyLoaded(loaded, keys, features, now)
-	return nil
-}
-
-// answering is the plugin host as the feature list sees it, or nil when there
-// is none. The two-step is because a nil interface holding a nil pointer is not
-// a nil interface, and a server with no plugins must be the second kind.
-func (a *API) answering() Answering {
-	if sink, ok := a.deps.Plugins.(Answering); ok && sink != nil {
-		return sink
-	}
-	return nil
-}
-
-// asking is the plugin host as a caller that needs an answer sees it, or nil
-// when there is none. The two-step is the same one [API.answering] makes, for
-// the same reason: a nil interface holding a nil pointer is not a nil interface.
-func (a *API) asking() Asking {
-	if sink, ok := a.deps.Plugins.(Asking); ok && sink != nil {
-		return sink
-	}
+	a.applyLoaded(loaded, a.deps.Features(), now)
 	return nil
 }
 
@@ -230,19 +199,19 @@ func (a *API) asking() Asking {
 // sent too fast would be forgiven every time the settings aged out or an
 // operator saved an unrelated form — which is to say there would be no rate
 // limiting at all.
-func (a *API) applyLoaded(loaded config.Settings, keys Keys, features []wire.Feature, now time.Time) {
+func (a *API) applyLoaded(loaded config.Settings, features []wire.Feature, now time.Time) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.limiter == nil || a.settings.Limits != loaded.Limits {
 		a.limiter = NewLimiter(loaded.Limits)
 	}
-	a.settings, a.keys, a.features, a.readAt = loaded, keys, features, now
+	a.settings, a.features, a.readAt = loaded, features, now
 }
 
 // Invalidate drops the held settings so that the next request reads them
 // again. It is what makes a change in the admin panel take effect without a
 // restart: the panel writes, calls this, and the following request rebuilds
-// the features, the keys and the discovery document from what is now stored.
+// the features and the discovery document from what is now stored.
 //
 // It deliberately does not touch the limiter. Emptying the buckets on every
 // settings change would forgive a client that was sending too fast each time
@@ -254,13 +223,13 @@ func (a *API) Invalidate() {
 	a.mu.Unlock()
 }
 
-// snapshot is the settings, features, keys and limiter as one consistent set.
+// snapshot is the settings, features and limiter as one consistent set.
 // Reading them one at a time could straddle a refresh and hand a handler
-// features computed from one set of keys and a limiter built from another.
-func (a *API) snapshot() (config.Settings, []wire.Feature, Keys, *Limiter) {
+// features from one refresh and a limiter built from another.
+func (a *API) snapshot() (config.Settings, []wire.Feature, *Limiter) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
-	return a.settings, a.features, a.keys, a.limiter
+	return a.settings, a.features, a.limiter
 }
 
 // authed is the middleware every route past discovery and pairing wears: the
@@ -280,15 +249,14 @@ func (a *API) authed(class Class, next func(http.ResponseWriter, *http.Request, 
 			a.deps.Log.LogAttrs(r.Context(), slog.LevelError,
 				"the settings could not be read, so the feature list may be stale", slog.Any("error", err))
 		}
-		settings, features, keys, limiter := a.snapshot()
+		settings, features, limiter := a.snapshot()
 
-		token, ok := bearer(r)
-		if !ok {
+		sum, prefix, err := presented(r)
+		switch {
+		case errors.Is(err, ErrNoToken):
 			a.fail(w, r, wire.CodeUnauthorized, msgNoToken)
 			return
-		}
-		sum, prefix, err := auth.SplitDeviceToken(token)
-		if err != nil {
+		case err != nil:
 			a.fail(w, r, wire.CodeUnauthorized, msgBadToken)
 			return
 		}
@@ -296,31 +264,24 @@ func (a *API) authed(class Class, next func(http.ResponseWriter, *http.Request, 
 			a.failRateLimited(w, r, retry)
 			return
 		}
-		device, err := a.deps.Store.DeviceByToken(r.Context(), prefix, sum)
+		device, driver, err := resolve(r.Context(), a.devices, sum, prefix, a.touch)
 		switch {
-		case errors.Is(err, db.ErrNotFound):
+		case errors.Is(err, ErrBadToken):
 			a.fail(w, r, wire.CodeUnauthorized, msgBadToken)
 			return
-		case err != nil:
-			a.failServer(w, r, "the device could not be read", err)
-			return
-		case device.Revoked():
+		case errors.Is(err, ErrRevokedToken):
 			a.fail(w, r, wire.CodeUnauthorized, msgRevokedToken)
 			return
-		}
-		driver, err := a.deps.Store.DriverByID(r.Context(), device.DriverID)
-		if err != nil {
-			a.failServer(w, r, "the driver could not be read", err)
+		case err != nil:
+			a.failServer(w, r, "the token could not be checked", err)
 			return
 		}
-		a.touch(r.Context(), device.ID)
 
 		next(w, r, session{
 			device:   device,
 			driver:   driver,
 			features: Entitled(features, driver.ID),
 			settings: settings,
-			keys:     keys,
 		})
 	}
 }
@@ -357,54 +318,9 @@ func (a *API) touch(ctx context.Context, deviceID int64) {
 	a.touched[deviceID] = now
 	a.touchedMu.Unlock()
 
-	if err := a.deps.Store.TouchDevice(ctx, deviceID); err != nil {
+	if err := a.devices.TouchDevice(ctx, deviceID); err != nil {
 		a.deps.Log.LogAttrs(ctx, slog.LevelWarn, "the device could not be marked as used", slog.Any("error", err))
 	}
-}
-
-// bearer pulls the token out of the Authorization header. The scheme is matched
-// case-insensitively because RFC 7235 says it is case-insensitive, and a client
-// that sends "bearer" is not wrong.
-func bearer(r *http.Request) (string, bool) {
-	const scheme = "bearer "
-	h := r.Header.Get("Authorization")
-	if len(h) <= len(scheme) {
-		return "", false
-	}
-	if !equalFold(h[:len(scheme)], scheme) {
-		return "", false
-	}
-	token := trimSpace(h[len(scheme):])
-	return token, token != ""
-}
-
-func equalFold(a, b string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range len(a) {
-		ca, cb := a[i], b[i]
-		if 'A' <= ca && ca <= 'Z' {
-			ca += 'a' - 'A'
-		}
-		if 'A' <= cb && cb <= 'Z' {
-			cb += 'a' - 'A'
-		}
-		if ca != cb {
-			return false
-		}
-	}
-	return true
-}
-
-func trimSpace(s string) string {
-	for s != "" && (s[0] == ' ' || s[0] == '\t') {
-		s = s[1:]
-	}
-	for s != "" && (s[len(s)-1] == ' ' || s[len(s)-1] == '\t') {
-		s = s[:len(s)-1]
-	}
-	return s
 }
 
 // bodyLimit is the cap on one request body, from the settings the operator

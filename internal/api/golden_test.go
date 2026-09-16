@@ -45,7 +45,6 @@ var fixtures = map[string]func() any{
 	"live.request":                  func() any { return new(wire.LiveSample) },
 	"field.request":                 func() any { return new(wire.FieldReport) },
 	"field.response":                func() any { return new(wire.FieldResult) },
-	"tts.request":                   func() any { return new(wire.TTSRequest) },
 	"error-unauthorized.response":   func() any { return new(wire.ErrorEnvelope) },
 	"error-forbidden.response":      func() any { return new(wire.ErrorEnvelope) },
 	"error-not_found.response":      func() any { return new(wire.ErrorEnvelope) },

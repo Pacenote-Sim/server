@@ -96,7 +96,7 @@ func TestWhatAPluginIsToldAboutTheCaller(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 	_, driver, panel, drivers := wired(t)
-	who := callerFor(panel, drivers)
+	who := callerFor(panel, drivers, nil, logging.Discard())
 
 	// Nobody, which is most requests to a public plugin page.
 	req := httptest.NewRequest(http.MethodGet, "/plugin/results/", http.NoBody)
@@ -127,7 +127,7 @@ func TestSigningADriverInFromAPlugin(t *testing.T) {
 
 	in := signInWith(drivers)
 	out := signOutWith(drivers)
-	who := callerFor(panel, drivers)
+	who := callerFor(panel, drivers, nil, logging.Discard())
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/plugin/driver-login/callback", http.NoBody)

@@ -4,6 +4,7 @@ package api_test
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"sync"
 	"testing"
@@ -163,17 +164,19 @@ func TestFactsReachAPlugin(t *testing.T) {
 		r := require.New(t)
 
 		facts := sink.lap(t, 7).Lap
-		r.Len(facts.Corners, 2)
-		r.Equal(3, facts.Corners[0].Turn, "worst first, as the client ranked them")
-		r.Equal(20, facts.Corners[0].DeficitKmh)
-		r.Equal(60, facts.Corners[0].ApexKmh)
-		r.Equal(80, facts.Corners[0].ReferenceApexKmh)
-		r.Equal(600, facts.Corners[0].ApexPct)
-		r.Equal(45, facts.Corners[0].BrakeAtApex)
-		r.Equal(40, facts.Corners[0].ThrottleLag)
-		r.Equal(plugin.PatternEarlyApex, facts.Corners[0].Pattern)
-		r.Equal(1, facts.Corners[1].Turn)
-		r.Equal(8, facts.Corners[1].DeficitKmh)
+		var corners []wire.Corner
+		r.NoError(json.Unmarshal(facts.Corners, &corners), "the document decodes with the wire types a plugin would use")
+		r.Len(corners, 2)
+		r.Equal(3, corners[0].Turn, "worst first, as the client ranked them")
+		r.Equal(20, corners[0].DeficitKmh)
+		r.Equal(60, corners[0].ApexKmh)
+		r.Equal(80, corners[0].RefApexKmh)
+		r.Equal(600, corners[0].ApexPct)
+		r.Equal(45, corners[0].BrakeAtApex)
+		r.Equal(40, corners[0].ThrottleLag)
+		r.Equal(wire.PatternEarlyApex, corners[0].Pattern)
+		r.Equal(1, corners[1].Turn)
+		r.Equal(8, corners[1].DeficitKmh)
 	})
 
 	t.Run("a lap that carried none is given none", func(t *testing.T) {
@@ -185,26 +188,31 @@ func TestFactsReachAPlugin(t *testing.T) {
 		r := require.New(t)
 
 		facts := sink.stint(t).Stint
-		r.NotNil(facts.Setup, "the setup was uploaded with the stint and has to come back with it")
-		r.Equal(4, facts.Setup.UpdateCount)
-		r.Len(facts.Setup.Tyres, 4)
+		r.NotEmpty(facts.Setup, "the setup was uploaded with the stint and has to come back with it")
+		var setup wire.CarSetup
+		r.NoError(json.Unmarshal(facts.Setup, &setup), "the document decodes with the wire types a plugin would use")
+		r.Equal(4, setup.UpdateCount)
+		r.Len(setup.Tyres, 4)
 
-		lf, ok := facts.Setup.TyreAt(plugin.WheelLF)
-		r.True(ok)
+		lf := tyreAt(t, setup, wire.WheelLF)
 		r.InDelta(165, lf.ColdKpa, 0.001)
 		r.InDelta(178.5, lf.HotKpa, 0.001)
 		r.InDelta(12, lf.TempInnerC-lf.TempOuterC, 0.001,
 			"the camber reading survives the database")
 
-		lr, ok := facts.Setup.TyreAt(plugin.WheelLR)
-		r.True(ok)
+		lr := tyreAt(t, setup, wire.WheelLR)
 		r.InDelta(3, lr.TempInnerC-lr.TempOuterC, 0.001, "and so does the rear axle being closer to even")
 
-		r.NotNil(facts.Setup.RearWing)
-		r.Equal("7 hole", facts.Setup.RearWing.Text)
+		r.NotNil(setup.RearWing)
+		r.Equal("7 hole", setup.RearWing.Text)
 
-		camber, ok := facts.Setup.Value("Camber")
-		r.True(ok)
+		var camber *wire.SetupValue
+		for i := range setup.Values {
+			if setup.Values[i].Name == "Camber" {
+				camber = &setup.Values[i]
+			}
+		}
+		r.NotNil(camber)
 		r.InDelta(-3.8, camber.Number, 0.001)
 		r.Equal("deg", camber.Unit)
 	})
@@ -288,4 +296,17 @@ func TestSetupIsClearedWhenAClientStopsSendingOne(t *testing.T) {
 	stored, err = h.store.Stint(ctx, parsed, h.driver.ID)
 	r.NoError(err)
 	r.Nil(stored.Setup, "a client that has stopped seeing a setup is telling us something")
+}
+
+// tyreAt is the wheel a plugin would look up in a decoded setup, failing the
+// test rather than returning a zero tyre that reads like a measurement.
+func tyreAt(t *testing.T, setup wire.CarSetup, w wire.Wheel) wire.SetupTyre {
+	t.Helper()
+	for _, tyre := range setup.Tyres {
+		if tyre.Wheel == w {
+			return tyre
+		}
+	}
+	t.Fatalf("the setup carries no %s tyre", w)
+	return wire.SetupTyre{}
 }

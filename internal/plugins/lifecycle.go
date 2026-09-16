@@ -216,7 +216,7 @@ func (h *Host) Restart(ctx context.Context, name string) error {
 // enabled reports whether the operator wants this plugin running. A row that
 // cannot be read is treated as enabled and logged: refusing to start every
 // plugin because one query failed would turn a database hiccup into a server
-// with no coaching, and the failure is already visible.
+// with no plugins, and the failure is already visible.
 func (h *Host) enabled(ctx context.Context, name string) bool {
 	row, err := h.opts.Store.Plugin(ctx, name)
 	switch {

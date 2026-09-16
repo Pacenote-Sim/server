@@ -83,7 +83,7 @@ func TestSpendingThatCannotBeReadRefusesTheCall(t *testing.T) {
 	r.NoError(h.host.SetDailyCap(t.Context(), "testplugin", 1_000))
 
 	h.store.failTokens = errors.New("the usage table is not there")
-	_, err := h.host.Ask(t.Context(), "testplugin", cueRequest())
+	_, err := h.host.Ask(t.Context(), "testplugin", echoRequest("testplugin"))
 	r.Error(err, "a call went through while what had been spent could not be read")
 	r.Contains(err.Error(), "usage table is not there")
 }
@@ -125,7 +125,7 @@ func TestAPluginThatRanForAWhileIsNeverGivenUpOn(t *testing.T) {
 	// returns, so restoring the behaviour afterwards cannot race it.
 	for range 4 {
 		misbehave(t, dir, behaviour{CrashAt: "answer", ExitCode: 2})
-		_, err := h.host.Ask(t.Context(), "testplugin", cueRequest())
+		_, err := h.host.Ask(t.Context(), "testplugin", echoRequest("testplugin"))
 		r.Error(err, "the caller is told there was no answer")
 
 		behaveNormally(t, dir)
@@ -134,7 +134,7 @@ func TestAPluginThatRanForAWhileIsNeverGivenUpOn(t *testing.T) {
 		// and the supervisor noticing, and asking in that window reaches a
 		// connection that is already gone.
 		eventually(t, "the plugin to answer again", func() bool {
-			_, err := h.host.Ask(t.Context(), "testplugin", cueRequest())
+			_, err := h.host.Ask(t.Context(), "testplugin", echoRequest("testplugin"))
 			return err == nil
 		})
 	}
@@ -145,7 +145,7 @@ func TestAPluginThatRanForAWhileIsNeverGivenUpOn(t *testing.T) {
 		"the restart count climbed across crashes that were each preceded by a real run")
 
 	// And it still works.
-	res, err := h.host.Ask(t.Context(), "testplugin", cueRequest())
+	res, err := h.host.Ask(t.Context(), "testplugin", echoRequest("testplugin"))
 	r.NoError(err)
-	r.NotEmpty(res.Text)
+	r.NotEmpty(res.Payload)
 }

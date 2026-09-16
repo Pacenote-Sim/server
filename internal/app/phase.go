@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -319,7 +320,6 @@ func (p *phase) normalHandler(ctx context.Context) (http.Handler, error) {
 	v1, err := api.New(ctx, api.Deps{
 		Log:       p.opts.Log,
 		Store:     p.store,
-		Keyring:   p.keyring,
 		Now:       p.opts.Now,
 		OnRequest: p.metrics.Observe,
 		Plugins:   host,
@@ -367,11 +367,10 @@ func (p *phase) normalHandler(ctx context.Context) (http.Handler, error) {
 		// the next request rebuilds the discovery document from the database.
 		OnSettingsChanged: v1.Invalidate,
 		// The preview on the settings page is the document a client would be
-		// served right now, which means it has to ask the plugin host the same
-		// question the real one does. A preview built from the settings alone
-		// would show a coach an operator does not have.
+		// served right now, built the way the real one is so the two cannot
+		// drift.
 		Discovery: func(s config.Settings) wire.Discovery {
-			return api.Discovery(s, api.Features(host, api.OpenKeys(s, p.keyring.Key())))
+			return api.Discovery(s, api.Features())
 		},
 	})
 	if err != nil {
@@ -388,7 +387,7 @@ func (p *phase) normalHandler(ctx context.Context) (http.Handler, error) {
 		Log:      p.opts.Log,
 		Plugins:  host,
 		Settings: p.store.Settings,
-		Who:      callerFor(panel, drivers),
+		Who:      callerFor(panel, drivers, v1, p.opts.Log),
 		SignIn:   signInWith(drivers),
 		SignOut:  signOutWith(drivers),
 	})
@@ -518,11 +517,30 @@ func sweepDriverSessions(ctx context.Context, s *driverauth.Sessions, log *slog.
 // Both halves come from this server's own session tables and neither from a
 // header, which is the whole rule: a plugin is told who the caller is and never
 // asked, so nothing a browser can set becomes an identity.
-func callerFor(panel *admin.Panel, drivers *driverauth.Sessions) func(*http.Request) pluginweb.Caller {
+func callerFor(panel *admin.Panel, drivers *driverauth.Sessions, tokens *api.API, log *slog.Logger) func(*http.Request) pluginweb.Caller {
 	return func(r *http.Request) pluginweb.Caller {
 		out := pluginweb.Caller{AdminEmail: panel.SignedInAdmin(r)}
 		if sess, ok := drivers.Current(r.Context(), r); ok {
 			out.DriverSlug, out.DriverName = sess.Slug, sess.Name
+			return out
+		}
+		// A client with no browser has no session. It has the device token it
+		// uploads with, and that is the same driver: the token is checked the
+		// way the API checks it, the plugin is told who, and the token itself
+		// is kept from the plugin on the way through. A request with no token
+		// is nobody, which is what a browser that is not signed in is too.
+		if tokens == nil {
+			return out
+		}
+		driver, err := tokens.DriverByBearer(r.Context(), r)
+		switch {
+		case err == nil:
+			out.DriverSlug, out.DriverName = driver.Slug, driver.Name
+		case errors.Is(err, api.ErrNoToken), errors.Is(err, api.ErrBadToken), errors.Is(err, api.ErrRevokedToken):
+			// The caller's, and answered by the route's own access rule.
+		default:
+			log.LogAttrs(r.Context(), slog.LevelWarn, "a client's token could not be checked for a plugin route",
+				slog.Any("error", err))
 		}
 		return out
 	}
