@@ -6,6 +6,12 @@ the patch when something was wrong.
 
 ## [Unreleased]
 
+### Fixed
+- **A plugin is told the circuit's name and the session type.** The stint event carried the
+  track's identifier but not its name, and no session type, so a debrief could not say where and
+  the radio could not tell a race from practice. Both are the client's own words, read back from
+  the stint.
+
 ### Added
 - **A plugin's own log reaches the server's.** Everything a plugin prints is echoed into the
   server's log as `plugin printed`, under the plugin's name and scrubbed of the credentials it was

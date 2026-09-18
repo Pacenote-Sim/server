@@ -54,17 +54,19 @@ func pluginDriver(d db.Driver) plugin.Driver {
 	return plugin.Driver{ID: d.ID, Slug: d.Slug, Name: d.Name}
 }
 
-// pluginSession is the stint as a plugin sees it. The display name of the
-// circuit and the session type are not on the row the write path holds, so they
-// are left empty rather than guessed at: a plugin that says "at Barcelona" when
-// the server does not know the name would be inventing one.
+// pluginSession is the stint as a plugin sees it: the identity the client
+// uploaded, name and all. The circuit's display name and the session type are
+// the client's own words, read back from the row rather than guessed at, so
+// that a plugin saying "at Spa" or "this is a race" is repeating the client.
 func pluginSession(stint db.Stint) plugin.Session {
 	return plugin.Session{
 		StintID:   stint.ID.String(),
 		Sim:       stint.Sim,
+		Track:     stint.Track,
 		TrackID:   stint.TrackID,
 		Car:       stint.Car,
 		CarClass:  stint.CarClass,
+		Type:      plugin.SessionType(stint.SessionType),
 		StartedAt: stint.StartedAt,
 	}
 }

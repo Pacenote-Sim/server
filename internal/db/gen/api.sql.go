@@ -525,7 +525,7 @@ func (q *Queries) ReplaceStintSummary(ctx context.Context, arg ReplaceStintSumma
 }
 
 const stintForDriver = `-- name: StintForDriver :one
-SELECT id, driver_id, sim, track_id, car, car_class, started_at, finished_at, setup
+SELECT id, driver_id, sim, track_id, track, car, car_class, session_type, started_at, finished_at, setup
 FROM stints WHERE id = $1 AND driver_id = $2
 `
 
@@ -535,15 +535,17 @@ type StintForDriverParams struct {
 }
 
 type StintForDriverRow struct {
-	ID         pgtype.UUID
-	DriverID   int64
-	Sim        string
-	TrackID    string
-	Car        string
-	CarClass   string
-	StartedAt  pgtype.Timestamptz
-	FinishedAt pgtype.Timestamptz
-	Setup      []byte
+	ID          pgtype.UUID
+	DriverID    int64
+	Sim         string
+	TrackID     string
+	Track       string
+	Car         string
+	CarClass    string
+	SessionType string
+	StartedAt   pgtype.Timestamptz
+	FinishedAt  pgtype.Timestamptz
+	Setup       []byte
 }
 
 // The sim comes back with the rest of the identity because every lap written
@@ -561,8 +563,10 @@ func (q *Queries) StintForDriver(ctx context.Context, arg StintForDriverParams) 
 		&i.DriverID,
 		&i.Sim,
 		&i.TrackID,
+		&i.Track,
 		&i.Car,
 		&i.CarClass,
+		&i.SessionType,
 		&i.StartedAt,
 		&i.FinishedAt,
 		&i.Setup,

@@ -90,7 +90,7 @@ RETURNING id, driver_id;
 -- carry it, and that read happens inside the same transaction as the write it
 -- belongs to.
 -- name: StintForDriver :one
-SELECT id, driver_id, sim, track_id, car, car_class, started_at, finished_at, setup
+SELECT id, driver_id, sim, track_id, track, car, car_class, session_type, started_at, finished_at, setup
 FROM stints WHERE id = $1 AND driver_id = $2;
 
 -- name: BestCleanLapMs :one

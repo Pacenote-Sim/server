@@ -31,14 +31,19 @@ type Tx struct {
 // about nothing underneath it, so a lap is only ever compared against a lap
 // from the same simulator.
 type Stint struct {
-	ID         UUID
-	DriverID   int64
-	Sim        string
-	TrackID    string
-	Car        string
-	CarClass   string
-	StartedAt  time.Time
-	FinishedAt *time.Time
+	ID       UUID
+	DriverID int64
+	Sim      string
+	TrackID  string
+	// Track is the display name the client sent with TrackID, so that what a
+	// plugin says about "Spa" is the name the client used, not one the server guessed.
+	Track    string
+	Car      string
+	CarClass string
+	// SessionType is practice, qualifying, race or testing.
+	SessionType string
+	StartedAt   time.Time
+	FinishedAt  *time.Time
 	// Setup is the car's setup as the client sent it, still encoded, or nil
 	// when the client sent none. It is carried as bytes because nothing here
 	// looks inside it: the API decodes it once, on the one path that turns it
@@ -110,15 +115,17 @@ func (t *Tx) Stint(ctx context.Context, id UUID, driverID int64) (Stint, error) 
 		return Stint{}, fmt.Errorf("db: cannot read the stint: %w", err)
 	}
 	return Stint{
-		ID:         uuidFromPg(row.ID),
-		DriverID:   row.DriverID,
-		Sim:        row.Sim,
-		TrackID:    row.TrackID,
-		Car:        row.Car,
-		CarClass:   row.CarClass,
-		StartedAt:  row.StartedAt.Time,
-		FinishedAt: optionalTime(row.FinishedAt),
-		Setup:      row.Setup,
+		ID:          uuidFromPg(row.ID),
+		DriverID:    row.DriverID,
+		Sim:         row.Sim,
+		TrackID:     row.TrackID,
+		Track:       row.Track,
+		Car:         row.Car,
+		CarClass:    row.CarClass,
+		SessionType: row.SessionType,
+		StartedAt:   row.StartedAt.Time,
+		FinishedAt:  optionalTime(row.FinishedAt),
+		Setup:       row.Setup,
 	}, nil
 }
 

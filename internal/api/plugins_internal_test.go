@@ -22,13 +22,15 @@ func testStint(t *testing.T) db.Stint {
 	id, err := db.ParseUUID("018f3b2a-0000-7000-8000-000000000001")
 	require.NoError(t, err)
 	return db.Stint{
-		ID:        id,
-		DriverID:  7,
-		Sim:       "iracing",
-		TrackID:   "barcelona gp",
-		Car:       "Ferrari 296 GT3",
-		CarClass:  "GT3",
-		StartedAt: time.Date(2026, 9, 13, 18, 0, 0, 0, time.UTC),
+		ID:          id,
+		DriverID:    7,
+		Sim:         "iracing",
+		TrackID:     "barcelona gp",
+		Track:       "Circuit de Barcelona-Catalunya",
+		Car:         "Ferrari 296 GT3",
+		CarClass:    "GT3",
+		SessionType: "practice",
+		StartedAt:   time.Date(2026, 9, 13, 18, 0, 0, 0, time.UTC),
 	}
 }
 
@@ -187,6 +189,12 @@ func TestStintEventFacts(t *testing.T) {
 	e := stintEvent(slog.New(slog.DiscardHandler), testSession(), testStint(t), body)
 	r.NoError(e.Validate())
 	r.Equal(plugin.EventStintFinished, e.Kind)
+	// Where and what, in the client's own words: a debrief that cannot say
+	// which circuit, or a radio that cannot tell a race from practice, is a
+	// plugin the server left guessing.
+	r.Equal("Circuit de Barcelona-Catalunya", e.Session.Track)
+	r.Equal("barcelona gp", e.Session.TrackID)
+	r.Equal(plugin.SessionPractice, e.Session.Type)
 	r.Equal(94, e.Stint.ConsistencyPct)
 	r.InDelta(36.0, e.Stint.Fuel.UsedL, 0.001)
 	r.InDelta(12.0, e.Stint.Fuel.RemainingL, 0.001)
