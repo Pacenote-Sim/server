@@ -82,13 +82,21 @@ type instanceHost = Host
 func newInstance(h *Host, m plugin.Manifest, dir, dsn, password string) *instance {
 	scrub := &scrubber{}
 	scrub.learnValues(password, dsn)
+	t := newTail(outputTail, scrub)
+	// A plugin's own lines are the only account of why it did what it did.
+	// They are kept for the panel and echoed into the server's log, already
+	// scrubbed, under the plugin's name.
+	t.echo = func(line string) {
+		h.opts.Log.LogAttrs(h.ctx, slog.LevelInfo, "plugin printed",
+			slog.String("plugin", m.Name), slog.String("line", line))
+	}
 	return &instance{
 		host:     h,
 		dir:      dir,
 		dsn:      dsn,
 		done:     make(chan struct{}),
 		scrub:    scrub,
-		tail:     newTail(outputTail, scrub),
+		tail:     t,
 		manifest: m,
 		state:    StateDiscovered,
 	}

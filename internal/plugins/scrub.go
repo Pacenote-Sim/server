@@ -108,6 +108,11 @@ type tail struct {
 	limit int
 	buf   []byte
 	scrub *scrubber
+	// echo, when set, is given every scrubbed line as it arrives, so that what
+	// a plugin prints also reaches the server's own log — where an operator
+	// tailing one stream sees the plugin's reasons beside the server's, rather
+	// than in a panel card they have to know to open.
+	echo func(line string)
 }
 
 // newTail keeps at most limit bytes.
@@ -119,6 +124,11 @@ func newTail(limit int, scrub *scrubber) *tail {
 func (t *tail) Write(p []byte) (int, error) {
 	n := len(p)
 	cleaned := []byte(t.scrub.clean(string(p)))
+	if t.echo != nil {
+		if line := strings.TrimSpace(string(cleaned)); line != "" {
+			t.echo(line)
+		}
+	}
 
 	t.mu.Lock()
 	defer t.mu.Unlock()

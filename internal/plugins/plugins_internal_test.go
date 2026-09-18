@@ -257,3 +257,27 @@ func TestProvisionWithoutAKeyringIsRefusedRatherThanFatal(t *testing.T) {
 	r.Empty(dsn)
 	r.Empty(password)
 }
+
+// What a plugin prints reaches the server's log as well as the panel, scrubbed
+// on the way: an operator tailing one stream reads the plugin's reasons beside
+// the server's, and a credential the plugin was lent is in neither.
+func TestWhatAPluginPrintsIsEchoedScrubbed(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	scrub := &scrubber{}
+	scrub.learnValues("sk-ant-secret")
+	tl := newTail(outputTail, scrub)
+	var echoed []string
+	tl.echo = func(line string) { echoed = append(echoed, line) }
+
+	_, err := tl.Write([]byte("level=WARN msg=\"the cues could not be read\" key=sk-ant-secret\n"))
+	r.NoError(err)
+	_, err = tl.Write([]byte("   \n"))
+	r.NoError(err)
+
+	r.Len(echoed, 1, "a blank line was echoed, or a real one was not")
+	r.Contains(echoed[0], "the cues could not be read")
+	r.NotContains(echoed[0], "sk-ant-secret", "a credential reached the log")
+	r.NotContains(tl.String(), "sk-ant-secret")
+}

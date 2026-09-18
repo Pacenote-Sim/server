@@ -14,7 +14,7 @@ require (
 	github.com/hashicorp/go-hclog v1.6.3
 	github.com/hashicorp/go-plugin v1.8.0
 	github.com/jackc/pgx/v5 v5.9.2
-	github.com/pacenote-sim/plugin v0.2.0
+	github.com/pacenote-sim/plugin v0.3.0
 	github.com/pacenote-sim/protocol v0.2.0
 	github.com/pressly/goose/v3 v3.26.0
 	github.com/prometheus/client_golang v1.23.2

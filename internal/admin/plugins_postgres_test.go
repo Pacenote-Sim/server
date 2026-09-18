@@ -184,6 +184,7 @@ func coachPlugin() plugins.Status {
 		Installed:        true,
 		Capabilities: plugin.Capabilities{
 			Events:          []plugin.EventKind{plugin.EventLapCompleted},
+			Calls:           []string{"api.anthropic.com"},
 			Requests:        []plugin.RequestKind{"engineer.debrief"},
 			Network:         true,
 			ReadsDriverData: true,
@@ -302,7 +303,7 @@ func TestPluginsPageListsWhatIsInstalled(t *testing.T) {
 	r.Contains(body, "Running")
 	// The capability sentences come from the plugin module so that every host
 	// words them the same way.
-	r.Contains(body, "Calls something outside this machine.")
+	r.Contains(body, "Calls api.anthropic.com.", "an operator is owed the name of what their data goes to")
 	r.Contains(body, "Keeps tables of its own")
 
 	r.Contains(body, "fromthefuture")

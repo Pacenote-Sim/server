@@ -6,6 +6,14 @@ the patch when something was wrong.
 
 ## [Unreleased]
 
+### Added
+- **A plugin's own log reaches the server's.** Everything a plugin prints is echoed into the
+  server's log as `plugin printed`, under the plugin's name and scrubbed of the credentials it was
+  lent — beside the panel card that already showed it, so one stream tells the whole story.
+- **The panel says what a plugin calls.** With plugin interface v0.3.0 a manifest names the hosts
+  it talks to, and the plugin's page reads "Calls api.anthropic.com." instead of "calls something
+  outside this machine".
+
 ## [0.2.0] — 2026-09-16
 
 ### Added
