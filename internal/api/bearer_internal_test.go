@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"log/slog"
@@ -16,10 +17,12 @@ import (
 
 // devices is a store under the test's control: one device, one driver.
 type devices struct {
-	device  db.Device
-	driver  db.Driver
-	fail    error
-	touched []int64
+	device db.Device
+	driver db.Driver
+	fail   error
+	// touchFail makes marking the device used fail, which must cost nothing.
+	touchFail error
+	touched   []int64
 }
 
 func (d *devices) DeviceByToken(_ context.Context, prefix string, _ []byte) (db.Device, error) {
@@ -42,6 +45,9 @@ func (d *devices) DriverByID(_ context.Context, id int64) (db.Driver, error) {
 func (d *devices) touch(_ context.Context, id int64) { d.touched = append(d.touched, id) }
 
 func (d *devices) TouchDevice(_ context.Context, id int64) error {
+	if d.touchFail != nil {
+		return d.touchFail
+	}
 	d.touched = append(d.touched, id)
 	return nil
 }
@@ -146,6 +152,32 @@ func TestATokenBecomesADriverOneWay(t *testing.T) {
 		r.ErrorContains(err, "went away")
 	})
 
+	t.Run("a device whose driver is gone is the store failing, not the client", func(t *testing.T) {
+		t.Parallel()
+		r := require.New(t)
+		s := *store
+		s.device.DriverID = 99
+		_, _, err := resolve(t.Context(), &s, token.Sum, token.Prefix, s.touch)
+		r.Error(err)
+		r.NotErrorIs(err, ErrBadToken)
+		r.ErrorContains(err, "the driver could not be read")
+		r.Empty(s.touched, "a device with no driver was marked as used")
+	})
+
+	t.Run("marking the device used is best effort", func(t *testing.T) {
+		t.Parallel()
+		r := require.New(t)
+		s := *store
+		s.touchFail = errors.New("the database went away")
+		var out bytes.Buffer
+		a := apiOver(&s)
+		a.deps.Log = slog.New(slog.NewTextHandler(&out, nil))
+		driver, err := a.DriverByBearer(t.Context(), withBearer(t, "Bearer "+token.Plain))
+		r.NoError(err, "a device that could not be marked used failed the driver's request")
+		r.Equal("ana-ruiz", driver.Slug)
+		r.Contains(out.String(), "could not be marked as used")
+	})
+
 	t.Run("DriverByBearer with nothing presented never reaches the store", func(t *testing.T) {
 		t.Parallel()
 		r := require.New(t)
@@ -174,4 +206,15 @@ func TestATokenBecomesADriverOneWay(t *testing.T) {
 		r.ErrorIs(err, ErrRevokedToken)
 		r.Empty(revoked.touched)
 	})
+}
+
+// An API needs a database and nothing else: every other dependency has a
+// default, and the one that does not is named.
+func TestNewNeedsADatabaseAndNothingElse(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	_, err := New(t.Context(), Deps{})
+	r.Error(err)
+	r.ErrorContains(err, "no database")
 }

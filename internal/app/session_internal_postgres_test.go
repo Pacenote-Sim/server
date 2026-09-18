@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/pacenote-sim/server/internal/admin"
+	"github.com/pacenote-sim/server/internal/api"
 	"github.com/pacenote-sim/server/internal/auth"
 	"github.com/pacenote-sim/server/internal/config"
 	"github.com/pacenote-sim/server/internal/db"
@@ -117,6 +118,47 @@ func TestWhatAPluginIsToldAboutTheCaller(t *testing.T) {
 	r.Equal("marta-ferrer", caller.DriverSlug)
 	r.Equal("Marta Ferrer", caller.DriverName)
 	r.Empty(caller.AdminEmail, "a signed-in driver was reported as an operator")
+}
+
+// The client has no browser and no session. It has the device token it uploads
+// with, and on a plugin's route that token is the same driver — checked the way
+// the API checks it, and never handed to the plugin.
+func TestAClientsTokenIsTheDriverOnAPluginRoute(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	store, driver, panel, drivers := wired(t)
+	ctx := context.Background()
+
+	tokens, err := api.New(ctx, api.Deps{Store: store, Log: logging.Discard()})
+	r.NoError(err)
+	who := callerFor(panel, drivers, tokens, logging.Discard())
+
+	token, err := auth.NewDeviceToken()
+	r.NoError(err)
+	device, err := store.CreateDevice(ctx, driver.ID, token.Sum, token.Prefix, "the client")
+	r.NoError(err)
+
+	withToken := func(value string) *http.Request {
+		req := httptest.NewRequest(http.MethodPost, "/plugin/engineer/laps", http.NoBody)
+		req.Header.Set("Authorization", value)
+		return req
+	}
+
+	caller := who(withToken("Bearer " + token.Plain))
+	r.Equal("marta-ferrer", caller.DriverSlug)
+	r.Equal("Marta Ferrer", caller.DriverName)
+	r.Empty(caller.AdminEmail)
+
+	// A token nobody issued, and no token, are nobody — the route's own
+	// access rule answers them, not this.
+	r.Empty(who(withToken("Bearer not-a-token")).DriverSlug)
+	r.Empty(who(httptest.NewRequest(http.MethodGet, "/plugin/engineer/me", http.NoBody)).DriverSlug)
+
+	// A token the operator took back is nobody too.
+	revoked, err := store.RevokeDevice(ctx, device.ID)
+	r.NoError(err)
+	r.True(revoked)
+	r.Empty(who(withToken("Bearer "+token.Plain)).DriverSlug, "a revoked token still named its driver")
 }
 
 func TestSigningADriverInFromAPlugin(t *testing.T) {
