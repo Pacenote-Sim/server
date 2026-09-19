@@ -3,6 +3,7 @@ package httpx_test
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -321,4 +322,53 @@ func TestServeShutsDownGracefully(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		r.Fail("Serve did not return")
 	}
+}
+
+// Every request is logged, except the one a client sends on a timer: the live
+// ping is written at debug while it works, so that a log at the usual level is
+// readable, and at the usual level the moment it fails.
+func TestTheLivePingDoesNotFillTheLog(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	var out strings.Builder
+	log := slog.New(slog.NewJSONHandler(&out, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	status := http.StatusNoContent
+	h := httpx.LogRequests(log)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(status)
+	}))
+
+	call := func(method, path string) {
+		req := httptest.NewRequest(method, path, http.NoBody)
+		h.ServeHTTP(httptest.NewRecorder(), req)
+	}
+
+	call(http.MethodPost, "/api/v1/live")
+	r.Empty(out.String(), "a working live ping was written at the level an operator reads")
+
+	// Everything else is logged as before, the live ping included once it
+	// stops working.
+	call(http.MethodGet, "/api/v1/me")
+	r.Contains(out.String(), `"path":"/api/v1/me"`)
+	out.Reset()
+
+	status = http.StatusTooManyRequests
+	call(http.MethodPost, "/api/v1/live")
+	r.Contains(out.String(), `"path":"/api/v1/live"`)
+	r.Contains(out.String(), `"status":429`)
+	out.Reset()
+
+	// A GET of the same path is not the ping.
+	status = http.StatusOK
+	call(http.MethodGet, "/api/v1/live")
+	r.Contains(out.String(), `"path":"/api/v1/live"`)
+	out.Reset()
+
+	// At debug, the ping is there for whoever turned debug on.
+	debug := slog.New(slog.NewJSONHandler(&out, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	status = http.StatusNoContent
+	httpx.LogRequests(debug)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(status)
+	})).ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/api/v1/live", http.NoBody))
+	r.Contains(out.String(), `"path":"/api/v1/live"`)
 }

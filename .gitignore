@@ -21,3 +21,7 @@ coverage.out
 # local env
 .env
 .env.*
+
+# Somewhere to run a client against a development server: its log, its queue
+# and its token. None of it is the server's.
+/try/

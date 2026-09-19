@@ -20,6 +20,7 @@ import (
 	"net"
 	"net/http"
 	"runtime/debug"
+	"strings"
 	"time"
 )
 
@@ -134,13 +135,23 @@ func Recover(log *slog.Logger) Middleware {
 // LogRequests writes one line per request. The path is logged and the query
 // string is not, because a query string is where a token ends up when someone
 // takes a shortcut.
+//
+// One route is quieter than the rest. A running client posts where it is on
+// the circuit every second, and at one line a second per driver that route
+// alone fills the log, so a successful one is written at debug. A failed one
+// is written like everything else: a heartbeat is worth reading when it stops
+// working, not while it does.
 func LogRequests(log *slog.Logger) Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
 			rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 			next.ServeHTTP(rec, r)
-			log.LogAttrs(r.Context(), slog.LevelInfo, "request",
+			level := slog.LevelInfo
+			if heartbeat(r) && rec.status < http.StatusBadRequest {
+				level = slog.LevelDebug
+			}
+			log.LogAttrs(r.Context(), level, "request",
 				slog.String("method", r.Method),
 				slog.String("path", r.URL.Path),
 				slog.Int("status", rec.status),
@@ -150,6 +161,12 @@ func LogRequests(log *slog.Logger) Middleware {
 			)
 		})
 	}
+}
+
+// heartbeat reports the live telemetry ping: the one route a client calls on
+// a timer rather than when something happened.
+func heartbeat(r *http.Request) bool {
+	return r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/live")
 }
 
 // Measure reports how one route finished, for the metrics port.
