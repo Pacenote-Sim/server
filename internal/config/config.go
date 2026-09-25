@@ -50,6 +50,10 @@ const (
 	EnvMetricsListen = "PACENOTE_METRICS_LISTEN"
 	EnvSecretKey     = "PACENOTE_SECRET_KEY"
 	EnvClientBinary  = "PACENOTE_CLIENT_BINARY"
+	// EnvMarketplaceURL points the server at another index, for a test
+	// installation or a mirror. The signature is still checked against the
+	// same key, so a mirror can only serve what pacenote.tech signed.
+	EnvMarketplaceURL = "PACENOTE_MARKETPLACE_URL"
 )
 
 // DefaultListen is the address the public server binds when nothing says
@@ -94,6 +98,11 @@ type Config struct {
 	// Empty means [ClientBinaryIn] of the data directory, which is where the
 	// community edition's zip puts it.
 	ClientBinary string `json:"client_binary,omitempty"`
+	// MarketplaceURL is where the index of approved plugins is read from.
+	// Empty means the marketplace package's default, which is pacenote.tech.
+	// Whether it is read at all is a setting in the database, because that
+	// is the operator's choice and not the machine's wiring.
+	MarketplaceURL string `json:"marketplace_url,omitempty"`
 }
 
 // Default is the configuration of a server that has been told nothing.
@@ -231,6 +240,9 @@ func (c *Config) applyEnv() {
 	if v, ok := os.LookupEnv(EnvClientBinary); ok && v != "" {
 		c.ClientBinary = v
 	}
+	if v, ok := os.LookupEnv(EnvMarketplaceURL); ok && v != "" {
+		c.MarketplaceURL = v
+	}
 }
 
 func (c *Config) fillDefaults() {
@@ -320,6 +332,10 @@ func AutocertDir(dir string) string { return filepath.Join(dir, "autocert") }
 // mounts as a volume, and a plugin that did not travel with it would be a
 // server that came up missing an integration nobody removed.
 func PluginsDir(dir string) string { return filepath.Join(dir, "plugins") }
+
+// MarketplaceDir is where the last good copy of the plugin index is kept, and
+// where a package is downloaded before it is unpacked into [PluginsDir].
+func MarketplaceDir(dir string) string { return filepath.Join(dir, "marketplace") }
 
 // DefaultLimits are the wire limits served in discovery and enforced by the
 // server, straight from API-V1.md. One set of constants, so the client's

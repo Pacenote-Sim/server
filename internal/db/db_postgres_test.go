@@ -259,6 +259,7 @@ func TestSettingsRoundTrip(t *testing.T) {
 	want.TLSMode = config.TLSAuto
 	want.Retention.TraceMonths = 6
 	want.Limits.TracePoints = 250
+	want.Marketplace = true
 	r.NoError(store.SaveSettings(ctx, want))
 
 	got, err := store.Settings(ctx)

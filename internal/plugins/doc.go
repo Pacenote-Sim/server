@@ -30,9 +30,9 @@
 //   - Metering, with the daily cap enforced here and not in the plugin.
 //   - Settings, declared by the plugin and configured in the panel.
 //
-// Serving an endpoint, adding a page, enriching data on the way in and the
-// marketplace are all in the plan and none of them are here. They wait until
-// something asks for them.
+// Enriching data on the way in is in the plan and not here. The marketplace
+// is: internal/marketplace reads the index and puts a verified folder in the
+// plugin directory, and this host finds it the way it finds any other.
 //
 // # What it refuses to do
 //

@@ -108,6 +108,16 @@ linters:
               desc: internal/db owns the migrations. They run from db.Migrate.
             - pkg: database/sql
               desc: internal/db owns the database. pgx speaks the native protocol.
+        # internal/marketplace is the one package that goes online. It reads
+        # and verifies a signed document and unpacks a zip, all of which the
+        # standard library does; the day it needs more is a day to look at why.
+        marketplace-stdlib-only:
+          list-mode: strict
+          files:
+            - "!$test"
+            - "**internal/marketplace/**"
+          allow:
+            - $gostd
         # internal/plugins owns the process boundary: it is the only package
         # that starts a plugin, and the only one that knows go-plugin exists.
         plugins-own-the-process-boundary:

@@ -25,6 +25,7 @@
 {{end}}{{if .WrongVersion}}          <div class="faint">built for interface {{.BuiltFor}}, this server speaks {{.HostSpeaks}}</div>
 {{end}}{{if .Restarts}}          <div class="faint">restarted {{.Restarts}} time{{if ne .Restarts 1}}s{{end}}</div>
 {{end}}{{if .LastError}}          <div class="faint">{{.LastError}}</div>
+{{end}}{{if .Withdrawn}}          <div class="faint">{{.Withdrawn}}</div>
 {{end}}        </td>
         <td class="declares">
 {{range .Declares}}          <div class="faint">{{.}}</div>
@@ -42,4 +43,51 @@
     <p class="muted">A plugin is a folder holding a manifest and a program. Put one in <code>{{.Form.Dir}}</code> and press <em>Look for new plugins</em> — the folder's name and the name in its manifest have to match.</p>
     <p class="muted">This server speaks plugin interface {{.Form.HostVersion}}. A plugin built against a different one will say so here rather than starting.</p>
 {{end}}  </div>
+
+  <div class="card">
+    <h2>Marketplace</h2>
+{{with .Form.Market}}{{if not .Available}}    <p class="muted">This build has no marketplace client.</p>
+{{else if not .On}}    <p class="muted">The marketplace is the list of plugins Pacenote has reviewed and approved, read from pacenote.tech. It is off: this server has never gone online and will not until you turn it on. On, it reads the list once an hour and installs from it when you ask; nothing about your drivers or your laps is sent.</p>
+    <form method="post" action="/admin/plugins/marketplace" class="row tight">
+      <input type="hidden" name="csrf" value="{{$.CSRF}}">
+      <button class="btn" type="submit" name="action" value="on">Turn the marketplace on</button>
+    </form>
+{{else}}    <p class="muted">Plugins Pacenote has reviewed and approved, built from the reviewed source and checked against a signed list. Last read {{template "moment" .Fetched}}.{{if .Err}} The last attempt failed: {{.Err}}{{end}}</p>
+    <form method="post" action="/admin/plugins/marketplace" class="row tight">
+      <input type="hidden" name="csrf" value="{{$.CSRF}}">
+      <button class="ghost" type="submit" name="action" value="refresh">Read the list again</button>
+      <button class="ghost" type="submit" name="action" value="off">Turn the marketplace off</button>
+    </form>
+{{if .Installing.Running}}    <p class="muted">Installing {{.Installing.Name}}, started {{datetime .Installing.StartedAt}}. This page follows it on its own.</p>
+{{else if .Installing.Name}}{{if .Installing.Err}}    <div class="notice bad">{{.Installing.Name}} could not be installed: {{.Installing.Err}}</div>
+{{else}}    <div class="notice good">{{.Installing.Name}} {{.Installing.Tag}} is installed{{if .Installing.Restarted}} and running the new version{{else if .Installing.RestartErr}}, but it could not be restarted: {{.Installing.RestartErr}}{{end}}.</div>
+{{end}}{{end}}{{if .Rows}}    <table class="facts rows">
+      <tr><th>Plugin</th><th>Calls</th><th></th></tr>
+{{range .Rows}}      <tr>
+        <td>
+          <strong>{{.Title}}</strong> <span class="faint">{{.Tag}}{{if .Paid}} · paid{{end}}</span>
+          <div class="faint">{{.Summary}}</div>
+          <div class="faint">{{.Author}} · {{.Licence}}</div>
+        </td>
+        <td class="declares">
+{{if .Calls}}{{range .Calls}}          <div class="faint">{{.}}</div>
+{{end}}{{else}}          <div class="faint">nothing outside this machine</div>
+{{end}}        </td>
+        <td>
+{{if .Update}}          <form method="post" action="/admin/plugins/install" class="row">
+            <input type="hidden" name="csrf" value="{{$.CSRF}}">
+            <input type="hidden" name="name" value="{{.Name}}">
+            <button class="btn" type="submit">Update from {{.Installed}}</button>
+          </form>
+{{else if .Installed}}          <span class="faint">installed</span>
+{{else}}          <form method="post" action="/admin/plugins/install" class="row">
+            <input type="hidden" name="csrf" value="{{$.CSRF}}">
+            <input type="hidden" name="name" value="{{.Name}}">
+            <button class="btn" type="submit">Install</button>
+          </form>
+{{end}}        </td>
+      </tr>
+{{end}}    </table>
+{{else}}    <p class="muted">Nothing in the list is built for this machine yet.</p>
+{{end}}{{end}}{{end}}  </div>
 {{end}}{{end}}

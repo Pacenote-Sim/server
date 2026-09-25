@@ -19,7 +19,9 @@
 // framework, no content delivery network, nothing fetched from anywhere: an
 // operator's admin panel should work on a machine with no route to the
 // internet, and the content security policy that allows nothing is only
-// possible because there is nothing to allow.
+// possible because there is nothing to allow. The one exception is the
+// marketplace, which the operator turns on, and which the browser never talks
+// to: the server fetches the index, and the panel renders what it verified.
 package admin
 
 import (
@@ -98,6 +100,9 @@ type Deps struct {
 	// says so rather than being absent, because a missing menu entry is a
 	// thing an operator cannot ask a question about.
 	Plugins Plugins
+	// Marketplace reads the index of approved plugins and installs from it.
+	// nil is a server built without one, and the plugins page says so.
+	Marketplace Marketplace
 }
 
 // Plugins is what the panel needs from the plugin host. It is an interface
@@ -134,8 +139,9 @@ type Panel struct {
 	sessions  *Sessions
 	logins    *httpx.Limiter
 	// prunes owns the one piece of work in this panel that outlives the
-	// request that started it.
-	prunes *pruner
+	// request that started it, and installs the other.
+	prunes   *pruner
+	installs *installer
 }
 
 // New builds the panel.
@@ -158,6 +164,7 @@ func New(d Deps) (*Panel, error) {
 		templates: tmpl,
 		sessions:  NewSessions(d.Store, d.Now),
 		prunes:    &pruner{},
+		installs:  &installer{},
 		// Ten attempts, then one every six seconds, per address. A person who
 		// has forgotten which password they used is not locked out; a script
 		// working through a list is.
@@ -215,6 +222,8 @@ func (p *Panel) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST "+CertificateRemovePath, p.requireSession(p.postRemoveCertificate))
 	mux.HandleFunc("GET /admin/plugins", p.requireSession(p.getPlugins))
 	mux.HandleFunc("POST /admin/plugins/rescan", p.requireSession(p.postPluginRescan))
+	mux.HandleFunc("POST "+MarketplacePath, p.requireSession(p.postMarketplace))
+	mux.HandleFunc("POST "+MarketplaceInstallPath, p.requireSession(p.postMarketplaceInstall))
 	mux.HandleFunc("GET /admin/plugins/{name}", p.requireSession(p.getPlugin))
 	mux.HandleFunc("POST /admin/plugins/{name}/settings", p.requireSession(p.postPluginSettings))
 	mux.HandleFunc("POST /admin/plugins/{name}/cap", p.requireSession(p.postPluginCap))

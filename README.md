@@ -90,6 +90,12 @@ database, and serve pages at `/plugin/<its name>/`.
 The panel lists what each one declared, renders the settings it asked for, and caps what it may
 spend per day.
 
+The panel can also install from the [marketplace](https://www.pacenote.tech/plugins/), the plugins
+Pacenote has reviewed and approved. It is off until you turn it on: this server never goes online
+otherwise. On, it reads a signed index from pacenote.tech once an hour, verifies it against a key
+built into the binary, and installs a plugin with one button, checking the package against the
+checksum in the index before anything is unpacked.
+
 ## Configuration from the environment
 
 Every value in the file can be overridden:

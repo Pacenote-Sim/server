@@ -56,6 +56,11 @@ type Settings struct {
 	// constant because what a team can afford to store is the operator's
 	// answer and not this server's.
 	Retention Retention `json:"retention"`
+	// Marketplace is whether this server reads the index of approved plugins
+	// from pacenote.tech. It is the one thing that makes the server go
+	// online, and it is off until the operator turns it on: a server that
+	// never fetched anything before must not start because it was upgraded.
+	Marketplace bool `json:"marketplace,omitempty"`
 }
 
 // MaxRetentionMonths is the longest retention an operator may set. Ten years is

@@ -6,6 +6,17 @@ the patch when something was wrong.
 
 ## [Unreleased]
 
+### Added
+- **The marketplace.** The plugins page has a card for the index of plugins Pacenote has reviewed
+  and approved, read from pacenote.tech and verified against a signing key built into this server.
+  It is off until an operator turns it on, because this server never went online before and must
+  not start because it was upgraded. On, the list is read once an hour and a plugin is installed
+  with one button: the package built by the marketplace from the reviewed source is downloaded,
+  checked against the checksum in the signed index, unpacked into the plugin directory, and the
+  plugin is started or restarted. A version the marketplace has withdrawn is called out on its row.
+  `PACENOTE_MARKETPLACE_URL`, or `marketplace_url` in `config.json`, points the server at a mirror;
+  the signature is checked against the same key either way.
+
 ### Fixed
 - **A plugin is told the circuit's name and the session type.** The stint event carried the
   track's identifier but not its name, and no session type, so a debrief could not say where and

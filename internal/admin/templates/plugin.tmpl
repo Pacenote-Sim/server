@@ -8,6 +8,7 @@
 {{end}}{{if not .Form.Row.Installed}}      <tr><th>Files</th><td>No longer in the plugin directory. What it stored is still here, so putting the folder back brings it up where it left off.</td></tr>
 {{end}}{{if .Form.Row.Restarts}}      <tr><th>Restarts</th><td class="num">{{.Form.Row.Restarts}}<span class="faint"> since it last ran cleanly</span></td></tr>
 {{end}}{{if .Form.Row.LastError}}      <tr><th>Last error</th><td>{{.Form.Row.LastError}}</td></tr>
+{{end}}{{if .Form.Row.Withdrawn}}      <tr><th>Withdrawn</th><td>{{.Form.Row.Withdrawn}} Turn it off, or install the current version from the marketplace.</td></tr>
 {{end}}    </table>
   </div>
 

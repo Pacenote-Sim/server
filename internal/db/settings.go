@@ -23,6 +23,7 @@ const (
 	SettingAccent       = "accent"
 	SettingLimits       = "limits"
 	SettingRetention    = "retention"
+	SettingMarketplace  = "marketplace"
 )
 
 // Settings reads the organisation's own settings. They live in the database
@@ -89,6 +90,8 @@ func applySetting(out *config.Settings, key string, raw []byte) error {
 		err = json.Unmarshal(raw, &out.Limits)
 	case SettingRetention:
 		err = json.Unmarshal(raw, &out.Retention)
+	case SettingMarketplace:
+		err = json.Unmarshal(raw, &out.Marketplace)
 	default:
 		// A setting this build does not know about belongs to a newer one.
 		// Leaving it alone is what lets a downgrade be survivable.
@@ -113,6 +116,7 @@ func saveSettings(ctx context.Context, q *gen.Queries, set config.Settings) erro
 		{SettingAccent, set.Accent},
 		{SettingLimits, set.Limits},
 		{SettingRetention, set.Retention},
+		{SettingMarketplace, set.Marketplace},
 	}
 	for _, p := range pairs {
 		raw, err := json.Marshal(p.value)

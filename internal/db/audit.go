@@ -59,6 +59,12 @@ const (
 	// uploads laps and a browser session reads them, and ending one is not
 	// ending the other.
 	ActionDriverSignedOut = "drivers.signed_out"
+	// ActionMarketplaceChanged is the marketplace being turned on or off,
+	// which is this server starting or stopping going online.
+	ActionMarketplaceChanged = "plugins.marketplace"
+	// ActionPluginInstalled is a plugin installed from the marketplace. The
+	// subject is the plugin, the change its tag.
+	ActionPluginInstalled = "plugins.installed"
 )
 
 // AuditEntry is one line of the trail: who did what, to what, and when.

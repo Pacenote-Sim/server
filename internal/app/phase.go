@@ -23,6 +23,7 @@ import (
 	"github.com/pacenote-sim/server/internal/db"
 	"github.com/pacenote-sim/server/internal/driverauth"
 	"github.com/pacenote-sim/server/internal/httpx"
+	"github.com/pacenote-sim/server/internal/marketplace"
 	"github.com/pacenote-sim/server/internal/metrics"
 	"github.com/pacenote-sim/server/internal/plugins"
 	"github.com/pacenote-sim/server/internal/pluginweb"
@@ -57,6 +58,9 @@ type phase struct {
 	// housekeeping alongside the listeners.
 	api *api.API
 
+	// market reads the plugin index while the marketplace is on. Its refresh
+	// loop is the phase's, like the sweeps.
+	market *marketplace.Client
 	// drivers holds the driver sessions a login plugin mints through, kept so
 	// that the housekeeping can clear out what has run out.
 	drivers *driverauth.Sessions
@@ -129,6 +133,13 @@ func (p *phase) run(ctx context.Context) (bool, error) {
 		go func() {
 			defer wg.Done()
 			p.api.Sweep(phaseCtx, api.SweepInterval)
+		}()
+	}
+	if p.market != nil {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			p.market.Run(phaseCtx, marketplace.DefaultRefresh)
 		}()
 	}
 	if p.drivers != nil {
@@ -329,6 +340,26 @@ func (p *phase) normalHandler(ctx context.Context) (http.Handler, error) {
 	}
 	p.api = v1
 
+	// The marketplace client. It goes online only while the setting says so,
+	// which it asks the database on every tick, so turning it off in the
+	// panel stops the next fetch without a restart.
+	market, err := marketplace.New(marketplace.Options{
+		URL:        p.cfg.MarketplaceURL,
+		Dir:        config.MarketplaceDir(p.opts.DataDir),
+		PluginsDir: config.PluginsDir(p.opts.DataDir),
+		Enabled: func(ctx context.Context) bool {
+			s, err := p.store.Settings(ctx)
+			return err == nil && s.Marketplace
+		},
+		UserAgent: "pacenote-server/" + p.opts.Version,
+		Log:       p.opts.Log,
+		Now:       p.opts.Now,
+	})
+	if err != nil {
+		return nil, err
+	}
+	p.market = market
+
 	panel, err := admin.New(admin.Deps{
 		Log:       p.opts.Log,
 		Store:     p.store,
@@ -345,8 +376,9 @@ func (p *phase) normalHandler(ctx context.Context) (http.Handler, error) {
 		// hand. The directory is passed as well as the host because the empty
 		// state has to name it: "there are no plugins" without saying where
 		// they go is a dead end.
-		Plugins:   host,
-		PluginDir: config.PluginsDir(p.opts.DataDir),
+		Plugins:     host,
+		PluginDir:   config.PluginsDir(p.opts.DataDir),
+		Marketplace: market,
 		// The prebuilt Windows client, and where copies of it go. Both live in
 		// the data directory by default, because that is the one place an
 		// operator already knows about and the one place that survives an

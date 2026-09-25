@@ -1,6 +1,7 @@
 package config_test
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -441,4 +442,41 @@ func TestTheShortNameIgnoresEmptyWords(t *testing.T) {
 
 	s := config.DefaultSettings("  Iberian   GT \t Championship  ", "pacenote.example.com", config.TLSProxy)
 	r.Equal("IGTC", s.ShortName)
+}
+
+func TestTheMarketplaceURLCanComeFromTheEnvironment(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv(config.EnvMarketplaceURL, "https://mirror.example.com/index.json")
+	c, err := config.Load(dir)
+	require.ErrorIs(t, err, config.ErrNotConfigured)
+	require.Equal(t, "https://mirror.example.com/index.json", c.MarketplaceURL)
+
+	// And from the file, which the environment then overrides.
+	t.Setenv(config.EnvMarketplaceURL, "")
+	saved := config.Default()
+	saved.DatabaseURL = "postgres://x"
+	saved.MarketplaceURL = "https://file.example.com/index.json"
+	require.NoError(t, saved.Save(dir))
+	c, err = config.Load(dir)
+	require.NoError(t, err)
+	require.Equal(t, "https://file.example.com/index.json", c.MarketplaceURL)
+}
+
+func TestMarketplaceDirIsInsideTheDataDir(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	require.Equal(t, filepath.Join(dir, "marketplace"), config.MarketplaceDir(dir))
+}
+
+func TestTheMarketplaceSettingIsOffUntilTurnedOn(t *testing.T) {
+	t.Parallel()
+	s := config.DefaultSettings("Iberian GT Championship", "pacenote.example.com", config.TLSProxy)
+	require.False(t, s.Marketplace, "a server that never went online must not start because it was upgraded")
+	data, err := json.Marshal(s)
+	require.NoError(t, err)
+	require.NotContains(t, string(data), "marketplace", "off is the absence of the key, so an older build reads the document unchanged")
+	s.Marketplace = true
+	data, err = json.Marshal(s)
+	require.NoError(t, err)
+	require.Contains(t, string(data), `"marketplace":true`)
 }

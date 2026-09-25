@@ -74,6 +74,9 @@ type pluginRow struct {
 	BuiltFor     int
 	HostSpeaks   int
 	Href         string
+	// Withdrawn is the marketplace's warning about this version, empty when
+	// there is none.
+	Withdrawn string
 }
 
 // pluginsForm is the list page.
@@ -87,6 +90,8 @@ type pluginsForm struct {
 	HostVersion int
 	// Unavailable is a server with no plugin host at all.
 	Unavailable bool
+	// Market is the marketplace card.
+	Market marketForm
 }
 
 // pluginField is one setting as the form renders it.
@@ -170,12 +175,30 @@ func (p *Panel) getPlugins(w http.ResponseWriter, r *http.Request, _ db.AdminSes
 		return
 	}
 	for _, s := range all {
-		form.Rows = append(form.Rows, pluginRowOf(s, form.HostVersion))
+		form.Rows = append(form.Rows, p.rowOf(s, form.HostVersion))
 	}
+	form.Market = p.marketFormFor(r.Context(), form.Rows)
 	p.render(w, r, "plugins", pageData{
 		Title: "Plugins", CSRF: csrf, SignedIn: true,
 		Nav: navFor("Plugins"), Form: form,
+		Refresh: p.installRefresh(),
 	})
+}
+
+// rowOf is [pluginRowOf] with the marketplace's warning attached.
+func (p *Panel) rowOf(s plugins.Status, hostVersion int) pluginRow {
+	row := pluginRowOf(s, hostVersion)
+	row.Withdrawn = p.withdrawnNote(s.Name, s.Version)
+	return row
+}
+
+// installRefresh is how often the page reloads while an install is running,
+// and zero otherwise.
+func (p *Panel) installRefresh() int {
+	if p.installs.snapshot().Running {
+		return installRefreshSeconds
+	}
+	return 0
 }
 
 func (p *Panel) renderPluginsError(w http.ResponseWriter, r *http.Request, csrf string, form pluginsForm, msg string) {
@@ -216,7 +239,7 @@ func (p *Panel) getPlugin(w http.ResponseWriter, r *http.Request, _ db.AdminSess
 		Title: status.Name, CSRF: csrf, SignedIn: true,
 		Nav: navFor("Plugins"),
 		Form: pluginForm{
-			Row:      pluginRowOf(status, p.deps.Plugins.InterfaceVersion()),
+			Row:      p.rowOf(status, p.deps.Plugins.InterfaceVersion()),
 			Fields:   fields,
 			Spend:    p.pluginSpending(r.Context(), name),
 			Output:   status.LastOutput,
@@ -484,7 +507,7 @@ func (p *Panel) answerPlugins(w http.ResponseWriter, r *http.Request, notice, ms
 		form.HostVersion = p.deps.Plugins.InterfaceVersion()
 		if all, err := p.deps.Plugins.All(r.Context()); err == nil {
 			for _, s := range all {
-				form.Rows = append(form.Rows, pluginRowOf(s, form.HostVersion))
+				form.Rows = append(form.Rows, p.rowOf(s, form.HostVersion))
 			}
 		} else if msg == "" {
 			msg = "The list of plugins could not be read. The database did not answer."
@@ -493,10 +516,12 @@ func (p *Panel) answerPlugins(w http.ResponseWriter, r *http.Request, notice, ms
 	} else {
 		form.Unavailable = true
 	}
+	form.Market = p.marketFormFor(r.Context(), form.Rows)
 	p.render(w, r, "plugins", pageData{
 		Title: "Plugins", CSRF: csrf, SignedIn: true,
 		Nav: navFor("Plugins"), Form: form,
 		Notice: notice, Error: msg, Status: status,
+		Refresh: p.installRefresh(),
 	})
 }
 
@@ -523,7 +548,7 @@ func (p *Panel) answerPlugin(w http.ResponseWriter, r *http.Request, name, notic
 		Title: st.Name, CSRF: csrf, SignedIn: true,
 		Nav: navFor("Plugins"),
 		Form: pluginForm{
-			Row:      pluginRowOf(st, p.deps.Plugins.InterfaceVersion()),
+			Row:      p.rowOf(st, p.deps.Plugins.InterfaceVersion()),
 			Fields:   fields,
 			Spend:    p.pluginSpending(r.Context(), name),
 			Output:   st.LastOutput,
